@@ -15,6 +15,7 @@ interface CampaignProgress {
 
 const STORAGE_KEY = "neskowin-coast-fighter-campaign";
 export const STARTING_FIGHTER_ID = "proposal-rock";
+const DEFAULT_UNLOCKED_FIGHTER_IDS = [STARTING_FIGHTER_ID, "duck-flag"];
 
 export const campaignLevels: CampaignLevel[] = [
   {
@@ -66,7 +67,7 @@ export const campaignLevels: CampaignLevel[] = [
 function defaultProgress(): CampaignProgress {
   return {
     completedLevelIds: [],
-    unlockedFighterIds: [STARTING_FIGHTER_ID],
+    unlockedFighterIds: [...DEFAULT_UNLOCKED_FIGHTER_IDS],
   };
 }
 
@@ -99,7 +100,7 @@ export function completeCampaignLevel(levelId: string) {
 
   const completedLevelIds = Array.from(new Set([...progress.completedLevelIds, level.id]));
   const unlockedFighterIds = Array.from(
-    new Set([...progress.unlockedFighterIds, STARTING_FIGHTER_ID, ...(level.unlockFighterId ? [level.unlockFighterId] : [])]),
+    new Set([...progress.unlockedFighterIds, ...DEFAULT_UNLOCKED_FIGHTER_IDS, ...(level.unlockFighterId ? [level.unlockFighterId] : [])]),
   );
   const nextProgress = { completedLevelIds, unlockedFighterIds };
   saveCampaignProgress(nextProgress);
@@ -115,7 +116,7 @@ function normalizeProgress(progress: Partial<CampaignProgress>): CampaignProgres
     : [];
   return {
     completedLevelIds,
-    unlockedFighterIds: Array.from(new Set([STARTING_FIGHTER_ID, ...unlockedFighterIds])),
+    unlockedFighterIds: Array.from(new Set([...DEFAULT_UNLOCKED_FIGHTER_IDS, ...unlockedFighterIds])),
   };
 }
 

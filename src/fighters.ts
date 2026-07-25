@@ -142,6 +142,33 @@ export const fighters: FighterConfig[] = [
       special: { ...baseAttacks.special, damage: 18, range: 146, knockback: 590 },
     },
   },
+  {
+    id: "duck-flag",
+    displayName: "Duck Flag",
+    title: "Autzen Summoner",
+    role: "Summoner / Ranged",
+    rarity: "Legendary",
+    bio: "A sideline spellcaster that calls Oregon football legends onto the beach, turning open field into passing lanes and rushing gaps.",
+    strengths: ["Long-range arcing pressure", "Summoned allies control space", "High special uptime pressure"],
+    weaknesses: ["Needs charge timing", "Lower defense", "Can be rushed during summons"],
+    passiveName: "Sco Ducks",
+    passiveDescription: "Summoned attacks gain value when Duck Flag creates enough space for them to travel.",
+    spriteKey: "fighter-duck-flag",
+    maxHealth: 104,
+    maxShield: 58,
+    shieldRechargePerSecond: 22,
+    speed: 252,
+    jumpPower: 642,
+    defense: 0.94,
+    tint: 0xffffff,
+    specialName: "Mascot Moto Loop",
+    aiProfile: "zoning",
+    attacks: {
+      light: { ...baseAttacks.light, damage: 11, range: 190, knockback: 420, cooldown: 780, windup: 80, active: 520 },
+      heavy: { ...baseAttacks.heavy, damage: 12, range: 620, knockback: 520, cooldown: 1180, windup: 0, active: 1500 },
+      special: { ...baseAttacks.special, damage: 8, range: 148, knockback: 310, cooldown: 5200, windup: 120, active: 10000 },
+    },
+  },
 ];
 
 export function getFighter(id: string): FighterConfig {

@@ -142,6 +142,7 @@ export class CharacterSelectScene extends Phaser.Scene {
     if (id === "proposal-rock") return 282;
     if (id === "chelan") return 292;
     if (id === "ocean") return 285;
+    if (id === "duck-flag") return 170;
     return 190;
   }
 
@@ -149,6 +150,7 @@ export class CharacterSelectScene extends Phaser.Scene {
     if (id === "proposal-rock") return 212;
     if (id === "chelan") return 176;
     if (id === "ocean") return 188;
+    if (id === "duck-flag") return 228;
     return 228;
   }
 

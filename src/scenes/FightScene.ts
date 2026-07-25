@@ -31,6 +31,13 @@ type AttackState = {
   ripRapSpikes?: {
     erupted: boolean;
   };
+  duckHeavy?: {
+    charging: boolean;
+    chargeStartedAt: number;
+    chargeRatio: number;
+    direction: 1 | -1;
+    summon?: Phaser.GameObjects.Container;
+  };
 };
 type BeachProjectileKind = "beachBall" | "shovel" | "fish" | "chair" | "towel" | "person";
 type OceanWaveKind = "breaker" | "cross" | "sneaker";
@@ -115,6 +122,44 @@ interface RollingRock {
   hitActors: Set<RuntimeFighter>;
 }
 
+interface DuckFootball {
+  object: Phaser.GameObjects.Container;
+  owner: RuntimeFighter;
+  damage: number;
+  knockback: number;
+  radius: number;
+  velocityX: number;
+  velocityY: number;
+  distanceTravelled: number;
+  expiresAt: number;
+  hit: boolean;
+}
+
+interface DuckRunner {
+  object: Phaser.GameObjects.Container;
+  owner: RuntimeFighter;
+  damage: number;
+  knockback: number;
+  radius: number;
+  velocityX: number;
+  expiresAt: number;
+  hit: boolean;
+}
+
+interface DuckMascotMotorcycle {
+  object: Phaser.GameObjects.Container;
+  owner: RuntimeFighter;
+  centerX: number;
+  centerY: number;
+  angle: number;
+  radiusX: number;
+  radiusY: number;
+  expiresAt: number;
+  nextHitAt: number;
+  damage: number;
+  knockback: number;
+}
+
 interface RuntimeFighter {
   config: FighterConfig;
   sprite: Phaser.Physics.Arcade.Sprite;
@@ -161,6 +206,9 @@ const DEFAULT_FIGHTER_MAX_VELOCITY_X = 430;
 const DEFAULT_FIGHTER_MAX_VELOCITY_Y = 980;
 const GROUND_HEIGHT = 34;
 const FIGHTER_FOOT_INSET = GROUND_HEIGHT / 2;
+const ARENA_CEILING_PADDING = 90;
+const ARENA_FLOOR_SNAP_TOLERANCE = 8;
+const ARENA_OUT_OF_BOUNDS_RECOVERY_PADDING = 180;
 const FIGHTER_STACK_MIN_OVERLAP_X = 18;
 const FIGHTER_STACK_CONTACT_TOLERANCE = 42;
 const FIGHTER_STACK_SEPARATION = 14;
@@ -169,6 +217,9 @@ const FIGHTER_STACK_LOWER_PUSH_SPEED = 540;
 const FIGHTER_STACK_UPPER_DRIFT_SPEED = 150;
 const FIGHTER_STACK_DOWNWARD_VELOCITY = 190;
 const CHELAN_SLAM_CUTSCENE_MS = 920;
+const DUCK_HEAVY_CHARGE_MAX_MS = 1500;
+const DUCK_HEAVY_MIN_RATIO = 0.18;
+const DUCK_MASCOT_DURATION_MS = 10000;
 
 export class FightScene extends Phaser.Scene {
   private selection!: MatchSelection;
@@ -190,6 +241,9 @@ export class FightScene extends Phaser.Scene {
   private projectiles: BeachProjectile[] = [];
   private starfishMines: StarfishMine[] = [];
   private rollingRocks: RollingRock[] = [];
+  private duckFootballs: DuckFootball[] = [];
+  private duckRunners: DuckRunner[] = [];
+  private duckMascots: DuckMascotMotorcycle[] = [];
   private oceanBossActive = false;
   private oceanBossSprite?: Phaser.GameObjects.Image;
   private oceanBossFoam?: Phaser.GameObjects.Ellipse;
@@ -435,6 +489,9 @@ export class FightScene extends Phaser.Scene {
     this.updateProjectiles(time);
     this.updateStarfishMines(time);
     this.updateRollingRocks(time);
+    this.updateDuckFootballs(time);
+    this.updateDuckRunners(time);
+    this.updateDuckMascots(time);
     this.clampActiveFightersToArena();
     this.updateHud(time);
     if (this.isOnlineHost() && time - this.lastOnlineStateAt >= 50) {
@@ -661,7 +718,8 @@ export class FightScene extends Phaser.Scene {
     this.playerOne.keyboardControls.down = this.keys.p1Down.isDown;
     this.playerOne.keyboardControls.block = this.keys.p1Block.isDown;
     this.playerOne.keyboardControls.light = Phaser.Input.Keyboard.JustDown(this.keys.p1Light);
-    this.playerOne.keyboardControls.heavy = Phaser.Input.Keyboard.JustDown(this.keys.p1Heavy);
+    this.playerOne.keyboardControls.heavy =
+      this.playerOne.config.id === "duck-flag" ? this.keys.p1Heavy.isDown : Phaser.Input.Keyboard.JustDown(this.keys.p1Heavy);
     this.playerOne.keyboardControls.special =
       this.playerOne.config.id === "proposal-rock" ? this.keys.p1Special.isDown : Phaser.Input.Keyboard.JustDown(this.keys.p1Special);
     this.playerOne.controls = this.mergeControls(this.playerOne.keyboardControls, this.playerOne.touchControls);
@@ -673,7 +731,8 @@ export class FightScene extends Phaser.Scene {
       this.playerTwo.keyboardControls.down = this.keys.p2Down.isDown;
       this.playerTwo.keyboardControls.block = this.keys.p2Block.isDown;
       this.playerTwo.keyboardControls.light = Phaser.Input.Keyboard.JustDown(this.keys.p2Light);
-      this.playerTwo.keyboardControls.heavy = Phaser.Input.Keyboard.JustDown(this.keys.p2Heavy);
+      this.playerTwo.keyboardControls.heavy =
+        this.playerTwo.config.id === "duck-flag" ? this.keys.p2Heavy.isDown : Phaser.Input.Keyboard.JustDown(this.keys.p2Heavy);
       this.playerTwo.keyboardControls.special =
         this.playerTwo.config.id === "proposal-rock" ? this.keys.p2Special.isDown : Phaser.Input.Keyboard.JustDown(this.keys.p2Special);
       this.playerTwo.controls = this.mergeControls(this.playerTwo.keyboardControls, this.playerTwo.touchControls);
@@ -712,7 +771,7 @@ export class FightScene extends Phaser.Scene {
     this.addTouchButton(136, height - 68, "", this.playerOne.touchControls, "block", "BLOCK");
 
     this.addTouchButton(width - 276, height - 102, "L", this.playerOne.touchControls, "light", "LIGHT", true);
-    this.addTouchButton(width - 170, height - 102, "H", this.playerOne.touchControls, "heavy", "HEAVY", true);
+    this.addTouchButton(width - 170, height - 102, "H", this.playerOne.touchControls, "heavy", "HEAVY", this.playerOne.config.id !== "duck-flag");
     this.addTouchButton(width - 64, height - 102, "S", this.playerOne.touchControls, "special", "SPECIAL", this.playerOne.config.id !== "proposal-rock");
 
     if (this.selection.mode === "local") {
@@ -920,6 +979,29 @@ export class FightScene extends Phaser.Scene {
         icon.strokeLineShape(new Phaser.Geom.Line(-17, 5, 17, -5));
         icon.fillCircle(18, -6, 5);
         break;
+      case "duck-flag:light":
+        icon.fillStyle(0x154733, 1);
+        icon.fillCircle(-8, 7, 12);
+        icon.fillRect(-5, -14, 9, 30);
+        icon.fillCircle(9, -9, 9);
+        icon.lineStyle(3, 0xffef7d, 1);
+        icon.strokeLineShape(new Phaser.Geom.Line(-22, 17, 20, 17));
+        break;
+      case "duck-flag:heavy":
+        icon.fillStyle(0x8b5a2b, 1);
+        icon.fillEllipse(0, 1, 28, 18);
+        icon.lineStyle(3, 0x102421, 1);
+        icon.strokeEllipse(0, 1, 28, 18);
+        icon.lineStyle(2, 0xffffff, 1);
+        icon.strokeLineShape(new Phaser.Geom.Line(-8, 1, 8, 1));
+        break;
+      case "duck-flag:special":
+        icon.fillStyle(0x154733, 1);
+        icon.fillCircle(-12, 11, 7);
+        icon.fillCircle(13, 11, 7);
+        icon.strokeLineShape(new Phaser.Geom.Line(-18, 4, 18, 4));
+        icon.fillRect(-5, -15, 16, 13);
+        break;
       default:
         icon.fillCircle(0, 0, 15);
         icon.lineStyle(3, 0xffef7d, 1);
@@ -989,11 +1071,13 @@ export class FightScene extends Phaser.Scene {
     this.playerOne.shieldRechargePausedUntil = 0;
     this.playerTwo.shieldRechargePausedUntil = 0;
     this.playerOne.sprite.setPosition(this.oceanBossActive || this.proposalRockBossActive ? 290 : 260, this.fighterSpawnY(height, this.playerOne.config)).setVelocity(0, 0);
-    this.playerOne.sprite.setAlpha(1).setScale(this.playerOne.baseScaleX, this.playerOne.baseScaleY).setRotation(0).setAngularVelocity(0);
+    this.playerOne.sprite.setAlpha(1).setRotation(0).setAngularVelocity(0);
+    this.setFighterScale(this.playerOne, this.playerOne.baseScaleX, this.playerOne.baseScaleY);
     this.playerOne.sprite.setMaxVelocity(DEFAULT_FIGHTER_MAX_VELOCITY_X, DEFAULT_FIGHTER_MAX_VELOCITY_Y);
     (this.playerOne.sprite.body as Phaser.Physics.Arcade.Body).setAllowGravity(true);
     this.playerTwo.sprite.setPosition(this.oceanBossActive || this.proposalRockBossActive ? width / 2 : width - 260, this.fighterSpawnY(height, this.playerTwo.config)).setVelocity(0, 0);
-    this.playerTwo.sprite.setAlpha(1).setScale(this.playerTwo.baseScaleX, this.playerTwo.baseScaleY).setRotation(0).setAngularVelocity(0);
+    this.playerTwo.sprite.setAlpha(1).setRotation(0).setAngularVelocity(0);
+    this.setFighterScale(this.playerTwo, this.playerTwo.baseScaleX, this.playerTwo.baseScaleY);
     this.playerTwo.sprite.setMaxVelocity(DEFAULT_FIGHTER_MAX_VELOCITY_X, DEFAULT_FIGHTER_MAX_VELOCITY_Y);
     this.playerOne.facing = 1;
     this.playerTwo.facing = -1;
@@ -1015,6 +1099,12 @@ export class FightScene extends Phaser.Scene {
     this.starfishMines = [];
     this.rollingRocks.forEach((rock) => rock.object.destroy());
     this.rollingRocks = [];
+    this.duckFootballs.forEach((football) => football.object.destroy());
+    this.duckFootballs = [];
+    this.duckRunners.forEach((runner) => runner.object.destroy());
+    this.duckRunners = [];
+    this.duckMascots.forEach((mascot) => mascot.object.destroy());
+    this.duckMascots = [];
     this.oceanWaves.forEach((wave) => this.destroyOceanWave(wave));
     this.oceanWaves = [];
     this.nextOceanWaveAt = this.time.now + 900;
@@ -1062,6 +1152,9 @@ export class FightScene extends Phaser.Scene {
     if (!attacksDisabled && controls.heavy) this.tryAttack(actor, "heavy", time);
     if (!attacksDisabled && controls.special) this.tryAttack(actor, "special", time);
     if (actor.attack?.spinCharge?.charging) {
+      actor.sprite.setVelocityX(0);
+    }
+    if (actor.attack?.duckHeavy?.charging) {
       actor.sprite.setVelocityX(0);
     }
 
@@ -1428,6 +1521,9 @@ export class FightScene extends Phaser.Scene {
     const isChelanSlam = actor.config.id === "chelan" && kind === "special";
     const isRipRapTopSpikes = actor.config.id === "rip-rap" && kind === "heavy";
     const isRipRapRollingRock = actor.config.id === "rip-rap" && kind === "special";
+    const isDuckLightRush = actor.config.id === "duck-flag" && kind === "light";
+    const isDuckHeavyThrow = actor.config.id === "duck-flag" && kind === "heavy";
+    const isDuckMascotSpecial = actor.config.id === "duck-flag" && kind === "special";
     actor.attack = isProposalSlam
       ? { kind, startedAt: time, hit: false, slam: { launched: false, impacted: false } }
       : isProposalSpinCharge
@@ -1457,7 +1553,19 @@ export class FightScene extends Phaser.Scene {
             }
           : isRipRapTopSpikes
             ? { kind, startedAt: time, hit: false, ripRapSpikes: { erupted: false } }
-            : { kind, startedAt: time, hit: false };
+            : isDuckHeavyThrow
+              ? {
+                  kind,
+                  startedAt: time,
+                  hit: false,
+                  duckHeavy: {
+                    charging: true,
+                    chargeStartedAt: time,
+                    chargeRatio: 0,
+                    direction: actor.facing,
+                  },
+                }
+              : { kind, startedAt: time, hit: false };
     actor.cooldowns[kind] = time + attack.cooldown;
     if (isProposalSlam) {
       actor.sprite.setVelocity(actor.facing * 390, -760);
@@ -1502,7 +1610,7 @@ export class FightScene extends Phaser.Scene {
     if (isRipRapTopSpikes) {
       actor.sprite.setVelocityX(0);
       actor.sprite.setTint(0xd9ded1);
-      actor.sprite.setScale(actor.baseScaleX * 1.08, actor.baseScaleY * 0.95);
+      this.setFighterScale(actor, actor.baseScaleX * 1.08, actor.baseScaleY * 0.95);
       this.flashMoveLabel(actor.sprite.x, actor.sprite.y - 142, "SPIKE CROWN");
       return;
     }
@@ -1514,6 +1622,34 @@ export class FightScene extends Phaser.Scene {
       this.flashMoveLabel(actor.sprite.x, actor.sprite.y - 138, "ROCK ROLL");
       this.time.delayedCall(180, () => {
         if (actor.attack?.kind === "special" && actor.config.id === "rip-rap") this.clearActiveAttack(actor);
+      });
+      return;
+    }
+    if (isDuckLightRush) {
+      actor.attack.hit = true;
+      actor.sprite.setVelocityX(-actor.facing * 52);
+      this.spawnDuckRunner(actor, time);
+      this.flashMoveLabel(actor.sprite.x, actor.sprite.y - 138, "LAMICHAEL");
+      this.time.delayedCall(140, () => {
+        if (actor.attack?.kind === "light" && actor.config.id === "duck-flag") this.clearActiveAttack(actor);
+      });
+      return;
+    }
+    if (isDuckHeavyThrow) {
+      actor.sprite.setVelocityX(0);
+      actor.sprite.setTint(0xffef7d);
+      actor.attack.duckHeavy!.summon = this.createDuckJoeySummon(actor);
+      this.flashMoveLabel(actor.sprite.x, actor.sprite.y - 138, "SET THE ARC");
+      return;
+    }
+    if (isDuckMascotSpecial) {
+      actor.attack.hit = true;
+      actor.sprite.setVelocityX(-actor.facing * 46);
+      actor.sprite.setTint(0xffef7d);
+      this.spawnDuckMascot(actor, time);
+      this.flashMoveLabel(actor.sprite.x, actor.sprite.y - 138, "MOTO DUCK");
+      this.time.delayedCall(240, () => {
+        if (actor.attack?.kind === "special" && actor.config.id === "duck-flag") this.clearActiveAttack(actor);
       });
       return;
     }
@@ -1538,6 +1674,10 @@ export class FightScene extends Phaser.Scene {
       this.resolveRipRapTopSpikes(actor, opponent, time);
       return;
     }
+    if (actor.attack.duckHeavy) {
+      this.resolveDuckHeavy(actor, time);
+      return;
+    }
     const attack = actor.config.attacks[actor.attack.kind];
     const age = time - actor.attack.startedAt;
     const active = age >= attack.windup && age <= attack.windup + attack.active;
@@ -1556,13 +1696,24 @@ export class FightScene extends Phaser.Scene {
 
   private clearActiveAttack(actor: RuntimeFighter) {
     actor.attack?.chelanSlam?.cutscene?.destroy();
+    actor.attack?.duckHeavy?.summon?.destroy();
     actor.attack = undefined;
     actor.sprite.setAlpha(1);
-    actor.sprite.setScale(actor.baseScaleX, actor.baseScaleY);
+    this.setFighterScale(actor, actor.baseScaleX, actor.baseScaleY);
     actor.sprite.setRotation(0);
     actor.sprite.setAngularVelocity(0);
     actor.sprite.setMaxVelocity(DEFAULT_FIGHTER_MAX_VELOCITY_X, DEFAULT_FIGHTER_MAX_VELOCITY_Y);
     actor.sprite.clearTint();
+  }
+
+  private setFighterScale(actor: RuntimeFighter, scaleX: number, scaleY: number) {
+    const body = actor.sprite.body as Phaser.Physics.Arcade.Body;
+    const previousBottom = body.bottom;
+    actor.sprite.setScale(scaleX, scaleY);
+    const nextBottom = body.bottom;
+    if (actor.sprite.visible && Number.isFinite(previousBottom) && Number.isFinite(nextBottom)) {
+      actor.sprite.y += previousBottom - nextBottom;
+    }
   }
 
   private inAttackRange(actor: RuntimeFighter, opponent: RuntimeFighter, range: number) {
@@ -1827,7 +1978,7 @@ export class FightScene extends Phaser.Scene {
 
     actor.sprite.setVelocityX(0);
     actor.sprite.setAlpha(0.92);
-    actor.sprite.setScale(actor.baseScaleX * (1.08 + pulse * 0.025), actor.baseScaleY * 0.94);
+    this.setFighterScale(actor, actor.baseScaleX * (1.08 + pulse * 0.025), actor.baseScaleY * 0.94);
 
     if (!state.erupted && age >= attack.windup) {
       state.erupted = true;
@@ -1961,6 +2112,264 @@ export class FightScene extends Phaser.Scene {
     this.cameras.main.shake(90, 0.006);
   }
 
+  private createDuckJoeySummon(actor: RuntimeFighter) {
+    const summonX = Phaser.Math.Clamp(actor.sprite.x - actor.facing * 78, 86, this.scale.width - 86);
+    const summonY = actor.sprite.y - 54;
+    const glow = this.add.ellipse(0, 44, 96, 24, 0xf8ff65, 0.22).setBlendMode(Phaser.BlendModes.ADD);
+    const joey = this.add.image(0, 0, "duck-flag-joey").setDisplaySize(62, 132).setFlipX(actor.facing < 0);
+    const container = this.add.container(summonX, summonY, [glow, joey]).setDepth(18).setAlpha(0.95);
+    this.tweens.add({ targets: container, y: summonY - 8, duration: 220, yoyo: true, repeat: -1, ease: "Sine.InOut" });
+    return container;
+  }
+
+  private resolveDuckHeavy(actor: RuntimeFighter, time: number) {
+    if (!actor.attack?.duckHeavy) return;
+    const charge = actor.attack.duckHeavy;
+    const controls = actor.controls;
+    const rawRatio = Phaser.Math.Clamp((time - charge.chargeStartedAt) / DUCK_HEAVY_CHARGE_MAX_MS, 0, 1);
+    charge.chargeRatio = rawRatio;
+    charge.direction = actor.facing;
+
+    if (charge.charging) {
+      actor.sprite.setVelocityX(0);
+      actor.sprite.setTint(rawRatio > 0.75 ? 0xffef7d : 0xd7ff4f);
+      this.setFighterScale(actor, actor.baseScaleX * (1 + rawRatio * 0.08), actor.baseScaleY * (1 - rawRatio * 0.05));
+      charge.summon?.setPosition(Phaser.Math.Clamp(actor.sprite.x - actor.facing * 78, 86, this.scale.width - 86), actor.sprite.y - 54);
+      charge.summon?.setScale(1 + rawRatio * 0.08);
+
+      if (!controls.heavy || rawRatio >= 1) {
+        const launchRatio = Math.max(rawRatio, DUCK_HEAVY_MIN_RATIO);
+        charge.charging = false;
+        actor.attack.hit = true;
+        this.spawnDuckFootball(actor, time, launchRatio, charge.summon);
+        this.flashMoveLabel(actor.sprite.x, actor.sprite.y - 138, launchRatio >= 0.98 ? "DEEP BALL" : "DUCK PASS");
+        this.time.delayedCall(220, () => {
+          if (actor.attack?.kind === "heavy" && actor.config.id === "duck-flag") this.clearActiveAttack(actor);
+        });
+      }
+    }
+  }
+
+  private spawnDuckFootball(actor: RuntimeFighter, time: number, ratio: number, summon?: Phaser.GameObjects.Container) {
+    const attack = actor.config.attacks.heavy;
+    const direction = actor.facing;
+    const startX = (summon?.x ?? actor.sprite.x) + direction * 34;
+    const startY = (summon?.y ?? actor.sprite.y) - 16;
+    const trail = this.add.ellipse(0, 0, 26, 12, 0xf8ff65, 0.2).setBlendMode(Phaser.BlendModes.ADD);
+    const ball = this.add.ellipse(0, 0, 24, 15, 0x8b5a2b, 1).setStrokeStyle(3, 0xffffff, 0.9);
+    const lace = this.add.rectangle(0, 0, 13, 2, 0xffffff, 1);
+    const object = this.add.container(startX, startY, [trail, ball, lace]).setDepth(20).setRotation(direction > 0 ? -0.22 : 0.22);
+    const speed = Phaser.Math.Linear(480, 820, ratio);
+    const lift = -Phaser.Math.Linear(120, 520, ratio);
+
+    this.duckFootballs.push({
+      object,
+      owner: actor,
+      damage: attack.damage,
+      knockback: attack.knockback,
+      radius: 36,
+      velocityX: direction * speed,
+      velocityY: lift,
+      distanceTravelled: 0,
+      expiresAt: time + Phaser.Math.Linear(1300, 2100, ratio),
+      hit: false,
+    });
+    this.cameras.main.shake(55 + ratio * 65, 0.003 + ratio * 0.004);
+  }
+
+  private updateDuckFootballs(time: number) {
+    const delta = this.game.loop.delta / 1000;
+    this.duckFootballs = this.duckFootballs.filter((football) => {
+      if (football.hit || time >= football.expiresAt) {
+        football.object.destroy();
+        return false;
+      }
+
+      football.velocityY += 760 * delta;
+      const moveX = football.velocityX * delta;
+      football.object.x += moveX;
+      football.object.y += football.velocityY * delta;
+      football.object.rotation += Math.sign(football.velocityX) * delta * 9;
+      football.distanceTravelled += Math.abs(moveX);
+
+      const target = football.owner === this.playerOne ? this.playerTwo : this.playerOne;
+      const xDistance = Math.abs(football.object.x - target.sprite.x);
+      const yDistance = Math.abs(football.object.y - target.sprite.y);
+      if (xDistance <= football.radius && yDistance <= football.radius + 64) {
+        football.hit = true;
+        const travelRatio = Phaser.Math.Clamp(football.distanceTravelled / 720, 0, 1);
+        const damage = Math.round(football.damage + travelRatio * 13);
+        const knockback = football.knockback + travelRatio * 260;
+        const shielded = this.absorbDamageWithShield(target, damage);
+        target.sprite.setVelocityX(Math.sign(football.velocityX) * knockback * (shielded ? 0.35 : 1));
+        target.sprite.setVelocityY(shielded ? -120 : -300);
+        this.createDuckFootballHit(football.object.x, football.object.y, travelRatio);
+        this.flashMoveLabel(target.sprite.x, target.sprite.y - 132, travelRatio > 0.72 ? "BOMB" : "COMPLETE");
+        football.object.destroy();
+        return false;
+      }
+
+      if (football.object.x < -120 || football.object.x > this.scale.width + 120 || football.object.y > this.scale.height + 80) {
+        football.object.destroy();
+        return false;
+      }
+      return true;
+    });
+  }
+
+  private createDuckFootballHit(x: number, y: number, ratio: number) {
+    const burst = this.add.circle(x, y, 12, 0xffef7d, 0.45).setStrokeStyle(4, 0xffffff, 0.76).setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({
+      targets: burst,
+      radius: 48 + ratio * 44,
+      alpha: 0,
+      duration: 320,
+      ease: "Quad.Out",
+      onComplete: () => burst.destroy(),
+    });
+    this.cameras.main.shake(80 + ratio * 80, 0.005 + ratio * 0.006);
+  }
+
+  private spawnDuckRunner(actor: RuntimeFighter, time: number) {
+    const attack = actor.config.attacks.light;
+    const direction = actor.facing;
+    const startX = actor.sprite.x + direction * 96;
+    const floorY = this.fightFloorY(this.scale.height) - 78;
+    const dust = this.add.ellipse(-12, 66, 88, 22, 0xffef7d, 0.2).setBlendMode(Phaser.BlendModes.ADD);
+    const runner = this.add.image(0, 0, "duck-flag-lamichael").setDisplaySize(72, 112).setFlipX(direction < 0);
+    const object = this.add.container(startX, floorY, [dust, runner]).setDepth(17);
+
+    this.duckRunners.push({
+      object,
+      owner: actor,
+      damage: attack.damage,
+      knockback: attack.knockback,
+      radius: attack.range,
+      velocityX: direction * 690,
+      expiresAt: time + 850,
+      hit: false,
+    });
+  }
+
+  private updateDuckRunners(time: number) {
+    const delta = this.game.loop.delta / 1000;
+    this.duckRunners = this.duckRunners.filter((runner) => {
+      if (runner.hit || time >= runner.expiresAt) {
+        runner.object.destroy();
+        return false;
+      }
+
+      runner.object.x += runner.velocityX * delta;
+      runner.object.y = this.fightFloorY(this.scale.height) - 78 + Math.sin(time / 52) * 5;
+
+      const target = runner.owner === this.playerOne ? this.playerTwo : this.playerOne;
+      const xDistance = Math.abs(runner.object.x - target.sprite.x);
+      const yDistance = Math.abs(runner.object.y - target.sprite.y);
+      if (xDistance <= 66 && yDistance <= 116) {
+        runner.hit = true;
+        const shielded = this.absorbDamageWithShield(target, runner.damage);
+        target.sprite.setVelocityX(Math.sign(runner.velocityX) * runner.knockback * (shielded ? 0.34 : 1));
+        target.sprite.setVelocityY(shielded ? -90 : -230);
+        this.createDuckRunnerHit(runner.object.x, runner.object.y + 32);
+        this.flashMoveLabel(target.sprite.x, target.sprite.y - 132, "TRUCKED");
+        runner.object.destroy();
+        return false;
+      }
+
+      if (runner.object.x < -140 || runner.object.x > this.scale.width + 140) {
+        runner.object.destroy();
+        return false;
+      }
+      return true;
+    });
+  }
+
+  private createDuckRunnerHit(x: number, y: number) {
+    const ring = this.add.ellipse(x, y, 76, 22, 0xd7ff4f, 0.34).setStrokeStyle(4, 0xffef7d, 0.72);
+    this.tweens.add({
+      targets: ring,
+      scaleX: 2.1,
+      alpha: 0,
+      duration: 260,
+      ease: "Quad.Out",
+      onComplete: () => ring.destroy(),
+    });
+    this.cameras.main.shake(95, 0.006);
+  }
+
+  private spawnDuckMascot(actor: RuntimeFighter, time: number) {
+    const attack = actor.config.attacks.special;
+    const target = actor === this.playerOne ? this.playerTwo : this.playerOne;
+    const centerX = Phaser.Math.Clamp(target.sprite.x, 190, this.scale.width - 190);
+    const centerY = this.fightFloorY(this.scale.height) - 104;
+    const glow = this.add.ellipse(0, 42, 136, 34, 0xd7ff4f, 0.24).setBlendMode(Phaser.BlendModes.ADD);
+    const mascot = this.add.image(0, 0, "duck-flag-mascot-motorcycle").setDisplaySize(164, 104).setFlipX(actor.facing < 0);
+    const object = this.add.container(centerX + 150, centerY, [glow, mascot]).setDepth(16);
+
+    this.duckMascots.push({
+      object,
+      owner: actor,
+      centerX,
+      centerY,
+      angle: 0,
+      radiusX: 168,
+      radiusY: 54,
+      expiresAt: time + DUCK_MASCOT_DURATION_MS,
+      nextHitAt: time + 250,
+      damage: attack.damage,
+      knockback: attack.knockback,
+    });
+    this.sound.play("duck-flag-motorcycle-sfx", { volume: 0.72 });
+    this.cameras.main.flash(90, 215, 255, 79, false);
+  }
+
+  private updateDuckMascots(time: number) {
+    const delta = this.game.loop.delta / 1000;
+    this.duckMascots = this.duckMascots.filter((mascot) => {
+      if (time >= mascot.expiresAt) {
+        mascot.object.destroy();
+        return false;
+      }
+
+      const target = mascot.owner === this.playerOne ? this.playerTwo : this.playerOne;
+      mascot.centerX = Phaser.Math.Linear(mascot.centerX, Phaser.Math.Clamp(target.sprite.x, 190, this.scale.width - 190), 0.025);
+      mascot.centerY = this.fightFloorY(this.scale.height) - 104;
+      mascot.angle += delta * 3.2;
+      const nextX = mascot.centerX + Math.cos(mascot.angle) * mascot.radiusX;
+      const nextY = mascot.centerY + Math.sin(mascot.angle) * mascot.radiusY;
+      const previousX = mascot.object.x;
+      mascot.object.setPosition(nextX, nextY);
+      mascot.object.setScale(nextX < previousX ? -1 : 1, 1);
+
+      const xDistance = Math.abs(mascot.object.x - target.sprite.x);
+      const yDistance = Math.abs(mascot.object.y - target.sprite.y);
+      if (time >= mascot.nextHitAt && xDistance <= 92 && yDistance <= 112) {
+        mascot.nextHitAt = time + 850;
+        const shielded = this.absorbDamageWithShield(target, mascot.damage);
+        const pushDirection = mascot.object.x < target.sprite.x ? 1 : -1;
+        target.sprite.setVelocityX(pushDirection * mascot.knockback * (shielded ? 0.32 : 1));
+        target.sprite.setVelocityY(shielded ? -80 : -190);
+        this.createDuckMascotHit(mascot.object.x, mascot.object.y + 22);
+        this.flashMoveLabel(target.sprite.x, target.sprite.y - 132, "MOTO HIT");
+      }
+
+      return true;
+    });
+  }
+
+  private createDuckMascotHit(x: number, y: number) {
+    const burst = this.add.circle(x, y, 14, 0xd7ff4f, 0.42).setStrokeStyle(4, 0xffef7d, 0.86).setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({
+      targets: burst,
+      radius: 62,
+      alpha: 0,
+      duration: 280,
+      ease: "Quad.Out",
+      onComplete: () => burst.destroy(),
+    });
+    this.cameras.main.shake(70, 0.0045);
+  }
+
   private resolveChelanSlam(actor: RuntimeFighter, opponent: RuntimeFighter, time: number) {
     if (!actor.attack?.chelanSlam) return;
     const state = actor.attack.chelanSlam;
@@ -2010,7 +2419,7 @@ export class FightScene extends Phaser.Scene {
     opponent.sprite.setPosition(centerX + direction * 54, opponentY - lift + slamRatio * 76);
     opponent.sprite.setRotation(direction * Phaser.Math.DegToRad(Phaser.Math.Linear(-18, 245, Math.max(liftRatio, slamRatio))));
     opponent.sprite.setAlpha(0.94 + Math.sin(grabAge / 38) * 0.05);
-    actor.sprite.setScale(actor.baseScaleX * (1.08 + Math.sin(grabAge / 45) * 0.025), actor.baseScaleY * 0.96);
+    this.setFighterScale(actor, actor.baseScaleX * (1.08 + Math.sin(grabAge / 45) * 0.025), actor.baseScaleY * 0.96);
 
     if (!state.slammed && grabAge >= 620) {
       state.slammed = true;
@@ -2029,7 +2438,7 @@ export class FightScene extends Phaser.Scene {
   private finishChelanSlam(actor: RuntimeFighter, opponent: RuntimeFighter) {
     this.clearActiveAttack(actor);
     opponent.sprite.setAlpha(1);
-    opponent.sprite.setScale(opponent.baseScaleX, opponent.baseScaleY);
+    this.setFighterScale(opponent, opponent.baseScaleX, opponent.baseScaleY);
     opponent.sprite.setRotation(0);
     opponent.sprite.clearTint();
     this.clampFighterToArena(actor);
@@ -2124,7 +2533,7 @@ export class FightScene extends Phaser.Scene {
       const pulse = 1 + rawRatio * 0.18 + Math.sin(time / 34) * rawRatio * 0.035;
       actor.sprite.setVelocityX(0);
       actor.sprite.setAngularVelocity(charge.direction * spinSpeed);
-      actor.sprite.setScale(actor.baseScaleX * pulse, actor.baseScaleY * (1 - rawRatio * 0.16));
+      this.setFighterScale(actor, actor.baseScaleX * pulse, actor.baseScaleY * (1 - rawRatio * 0.16));
       actor.sprite.setAlpha(0.88 + rawRatio * 0.12);
       actor.sprite.setTint(rawRatio > 0.72 ? 0xffef7d : 0xf3d98c);
 
@@ -2181,7 +2590,7 @@ export class FightScene extends Phaser.Scene {
   private finishProposalSpinCharge(actor: RuntimeFighter) {
     actor.attack = undefined;
     actor.sprite.setAlpha(1);
-    actor.sprite.setScale(actor.baseScaleX, actor.baseScaleY);
+    this.setFighterScale(actor, actor.baseScaleX, actor.baseScaleY);
     actor.sprite.setRotation(0);
     actor.sprite.setAngularVelocity(0);
     actor.sprite.setMaxVelocity(DEFAULT_FIGHTER_MAX_VELOCITY_X, DEFAULT_FIGHTER_MAX_VELOCITY_Y);
@@ -2233,7 +2642,17 @@ export class FightScene extends Phaser.Scene {
     if (!actor.sprite.visible) return;
     const body = actor.sprite.body as Phaser.Physics.Arcade.Body;
     let nextX = actor.sprite.x;
+    let nextY = actor.sprite.y;
     let blockedDirection: 1 | -1 | 0 = 0;
+    let recovered = false;
+
+    if (!Number.isFinite(actor.sprite.x) || !Number.isFinite(actor.sprite.y)) {
+      actor.sprite.setPosition(this.getSafeFighterX(actor), this.fighterSpawnY(this.scale.height, actor.config));
+      actor.sprite.setVelocity(0, 0);
+      this.clearActiveAttack(actor);
+      this.syncFighterAttachments(actor);
+      return;
+    }
 
     if (body.left < 0) {
       nextX += -body.left;
@@ -2248,6 +2667,52 @@ export class FightScene extends Phaser.Scene {
       if (blockedDirection < 0 && body.velocity.x < 0) actor.sprite.setVelocityX(0);
       if (blockedDirection > 0 && body.velocity.x > 0) actor.sprite.setVelocityX(0);
     }
+
+    const floorTop = this.fightFloorY(this.scale.height) - GROUND_HEIGHT / 2;
+    const ceiling = -ARENA_CEILING_PADDING;
+    if (body.bottom > floorTop + ARENA_FLOOR_SNAP_TOLERANCE) {
+      nextY -= body.bottom - floorTop;
+      recovered = true;
+    } else if (body.top < ceiling) {
+      nextY += ceiling - body.top;
+      recovered = true;
+    }
+
+    const badlyOutsideArena =
+      body.right < -ARENA_OUT_OF_BOUNDS_RECOVERY_PADDING ||
+      body.left > this.scale.width + ARENA_OUT_OF_BOUNDS_RECOVERY_PADDING ||
+      body.top > this.scale.height + ARENA_OUT_OF_BOUNDS_RECOVERY_PADDING;
+    if (badlyOutsideArena) {
+      actor.sprite.setPosition(this.getSafeFighterX(actor), this.fighterSpawnY(this.scale.height, actor.config));
+      actor.sprite.setVelocity(0, 0);
+      this.clearActiveAttack(actor);
+      this.syncFighterAttachments(actor);
+      return;
+    }
+
+    if (nextY !== actor.sprite.y) {
+      actor.sprite.setY(nextY);
+      if (body.velocity.y > 0 || recovered) actor.sprite.setVelocityY(0);
+      if (recovered) this.clearActiveAttack(actor);
+    }
+    this.syncFighterAttachments(actor);
+  }
+
+  private getSafeFighterX(actor: RuntimeFighter) {
+    const fallbackX =
+      actor === this.playerOne
+        ? this.oceanBossActive || this.proposalRockBossActive
+          ? 290
+          : 260
+        : this.oceanBossActive || this.proposalRockBossActive
+          ? this.scale.width / 2
+          : this.scale.width - 260;
+    return Phaser.Math.Clamp(Number.isFinite(actor.sprite.x) ? actor.sprite.x : fallbackX, 80, this.scale.width - 80);
+  }
+
+  private syncFighterAttachments(actor: RuntimeFighter) {
+    actor.nameLabel.setPosition(actor.sprite.x, actor.sprite.y - 132);
+    this.updateShieldVisual(actor);
   }
 
   private createSpinLaunchBurst(x: number, y: number, direction: 1 | -1, ratio: number) {
@@ -2298,7 +2763,7 @@ export class FightScene extends Phaser.Scene {
     slam.launched = slam.launched || age > 110 || body.velocity.y < -80;
     actor.sprite.setAlpha(0.94);
     const slamScale = 1.08 + Math.sin(age / 55) * 0.035;
-    actor.sprite.setScale(actor.baseScaleX * slamScale, actor.baseScaleY * slamScale);
+    this.setFighterScale(actor, actor.baseScaleX * slamScale, actor.baseScaleY * slamScale);
     actor.sprite.setAngularVelocity(actor.facing * (body.velocity.y < 0 ? 105 : 170));
 
     if (!slam.impacted && slam.launched && age > 300 && body.blocked.down) {
@@ -2306,7 +2771,7 @@ export class FightScene extends Phaser.Scene {
       actor.attack.hit = true;
       actor.sprite.setAngularVelocity(0);
       actor.sprite.setRotation(0);
-      actor.sprite.setScale(actor.baseScaleX * 1.18, actor.baseScaleY * 0.82);
+      this.setFighterScale(actor, actor.baseScaleX * 1.18, actor.baseScaleY * 0.82);
       actor.sprite.setVelocityX(0);
       this.createSlamImpact(actor.sprite.x, actor.sprite.y + 72);
 
@@ -2321,14 +2786,14 @@ export class FightScene extends Phaser.Scene {
     if (slam.impacted && age > 680) {
       actor.attack = undefined;
       actor.sprite.setAlpha(1);
-      actor.sprite.setScale(actor.baseScaleX, actor.baseScaleY);
+      this.setFighterScale(actor, actor.baseScaleX, actor.baseScaleY);
       actor.sprite.setRotation(0);
     }
 
     if (!slam.impacted && age > 1400) {
       actor.attack = undefined;
       actor.sprite.setAlpha(1);
-      actor.sprite.setScale(actor.baseScaleX, actor.baseScaleY);
+      this.setFighterScale(actor, actor.baseScaleX, actor.baseScaleY);
       actor.sprite.setRotation(0);
       actor.sprite.setAngularVelocity(0);
     }
@@ -2468,6 +2933,7 @@ export class FightScene extends Phaser.Scene {
     this.roundOver = state.roundOver;
     this.applyFighterNetState(this.playerOne, state.playerOne);
     this.applyFighterNetState(this.playerTwo, state.playerTwo);
+    this.clampActiveFightersToArena();
     this.updateHud(this.time.now);
   }
 
