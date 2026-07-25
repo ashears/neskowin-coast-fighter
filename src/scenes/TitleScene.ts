@@ -1,12 +1,22 @@
 import Phaser from "phaser";
 import type { GameMode } from "../types";
 
+type TitleMenu = "main" | "start";
+
 export class TitleScene extends Phaser.Scene {
+  private activeMenu: TitleMenu = "main";
+
   constructor() {
     super("TitleScene");
   }
 
   create() {
+    this.activeMenu = "main";
+    this.render();
+  }
+
+  private render() {
+    this.children.removeAll();
     const { width, height } = this.scale;
     this.add.image(width / 2, height / 2, "beach2").setDisplaySize(width, height).setAlpha(0.82);
     this.add.rectangle(width / 2, height / 2, width, height, 0x070b11, 0.38);
@@ -38,7 +48,7 @@ export class TitleScene extends Phaser.Scene {
 
     this.add.image(245, 390, "fighter-proposal-rock").setDisplaySize(355, 265).setAngle(-8);
     this.add.image(width - 240, 382, "fighter-chelan").setDisplaySize(370, 222).setAngle(8);
-    this.add.text(width / 2, 286, "CHOOSE YOUR MATCH", {
+    this.add.text(width / 2, 286, this.activeMenu === "main" ? "MAIN MENU" : "START GAME", {
       fontFamily: "system-ui, sans-serif",
       fontSize: "25px",
       color: "#f7f2e6",
@@ -47,9 +57,15 @@ export class TitleScene extends Phaser.Scene {
       padding: { x: 20, y: 8 },
     }).setOrigin(0.5);
 
-    this.addButton(width / 2 - 275, 430, "Player vs AI", () => this.startMode("ai"), 260, 88, -5);
-    this.addButton(width / 2, 430, "Local 2 Player", () => this.startMode("local"), 260, 88, 0);
-    this.addButton(width / 2 + 275, 430, "Online", () => this.scene.start("OnlineScene"), 260, 88, 5);
+    if (this.activeMenu === "main") {
+      this.addButton(width / 2 - 150, 430, "Start Game", () => this.showStartMenu(), 280, 88, -4);
+      this.addButton(width / 2 + 150, 430, "View Characters", () => this.startMode("ai"), 300, 88, 4);
+    } else {
+      this.addButton(width / 2 - 290, 430, "Campaign", () => this.startMode("ai"), 255, 88, -5);
+      this.addButton(width / 2, 430, "Single Battle", () => this.startMode("local"), 285, 88, 0);
+      this.addButton(width / 2 + 290, 430, "Online Battle", () => this.scene.start("OnlineScene"), 285, 88, 5);
+      this.addButton(width / 2, 535, "Back", () => this.showMainMenu(), 170, 62, 0);
+    }
 
     this.add
       .text(width / 2, height - 76, "WASD/F/G/H/Shift    Arrows/J/K/L/Slash    Online iPad joins as P2", {
@@ -59,6 +75,16 @@ export class TitleScene extends Phaser.Scene {
         fontStyle: "800",
       })
       .setOrigin(0.5);
+  }
+
+  private showMainMenu() {
+    this.activeMenu = "main";
+    this.render();
+  }
+
+  private showStartMenu() {
+    this.activeMenu = "start";
+    this.render();
   }
 
   private addButton(x: number, y: number, label: string, onClick: () => void, buttonWidth = 285, buttonHeight = 92, angle = 0) {

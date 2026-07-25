@@ -496,9 +496,8 @@ export class FightScene extends Phaser.Scene {
     this.addTouchButton(84, height - 102, "◀", this.playerOne.touchControls, "left", "MOVE");
     this.addTouchButton(188, height - 102, "▶", this.playerOne.touchControls, "right", "MOVE");
     this.addTouchButton(136, height - 202, "▲", this.playerOne.touchControls, "up", "JUMP", true);
-    this.addTouchButton(136, height - 34, "▼", this.playerOne.touchControls, "down", "DUCK");
+    this.addTouchButton(136, height - 68, "", this.playerOne.touchControls, "block", "BLOCK");
 
-    this.addTouchButton(width - 382, height - 102, "B", this.playerOne.touchControls, "block", "BLOCK");
     this.addTouchButton(width - 276, height - 102, "L", this.playerOne.touchControls, "light", "LIGHT", true);
     this.addTouchButton(width - 170, height - 102, "H", this.playerOne.touchControls, "heavy", "HEAVY", true);
     this.addTouchButton(width - 64, height - 102, "S", this.playerOne.touchControls, "special", "SPECIAL", true);
@@ -547,15 +546,18 @@ export class FightScene extends Phaser.Scene {
       .setStrokeStyle(3, 0x102421)
       .setScrollFactor(0)
       .setInteractive({ useHandCursor: true });
-    const text = this.add
-      .text(x, y, label, {
-        fontFamily: "system-ui, sans-serif",
-        fontSize: "25px",
-        color: "#102421",
-        fontStyle: "900",
-      })
-      .setOrigin(0.5)
-      .setScrollFactor(0);
+    const icon =
+      isAttack || action === "block"
+        ? this.createTouchButtonIcon(x, y, action)
+        : this.add
+            .text(x, y, label, {
+              fontFamily: "system-ui, sans-serif",
+              fontSize: "25px",
+              color: "#102421",
+              fontStyle: "900",
+            })
+            .setOrigin(0.5)
+            .setScrollFactor(0);
     const captionText = this.add
       .text(x, y + 58, caption, {
         fontFamily: "system-ui, sans-serif",
@@ -569,7 +571,7 @@ export class FightScene extends Phaser.Scene {
     const release = () => {
       controls[action] = false;
       button.setFillStyle(baseColor, 0.9);
-      this.tweens.add({ targets: [button, text], scale: 1, duration: 70, ease: "Back.Out" });
+      this.tweens.add({ targets: [button, icon], scale: 1, duration: 70, ease: "Back.Out" });
       this.tweens.add({ targets: ring, scale: 1, alpha: 1, duration: 90, ease: "Sine.Out" });
     };
 
@@ -578,7 +580,7 @@ export class FightScene extends Phaser.Scene {
       button.setFillStyle(activeColor, 1);
       this.input.manager.canvas.style.cursor = "pointer";
       this.triggerHaptic(action);
-      this.tweens.add({ targets: [button, text], scale: 0.88, duration: 55, ease: "Sine.Out" });
+      this.tweens.add({ targets: [button, icon], scale: 0.88, duration: 55, ease: "Sine.Out" });
       this.tweens.add({ targets: ring, scale: 1.22, alpha: 0.42, duration: 120, ease: "Sine.Out" });
       this.popTouchFeedback(x, y - 64, caption, isAttack ? 0xffef7d : 0xd4e7ff);
       if (pulse) this.time.delayedCall(125, release);
@@ -588,6 +590,118 @@ export class FightScene extends Phaser.Scene {
     button.on("pointerout", release);
 
     captionText.setInteractive({ useHandCursor: true });
+  }
+
+  private createTouchButtonIcon(x: number, y: number, action: ControlAction) {
+    const icon = this.add.graphics().setScrollFactor(0);
+    icon.setPosition(x, y);
+    if (action === "block") {
+      icon.fillStyle(0x102421, 1);
+      icon.fillRoundedRect(-15, -21, 30, 38, 8);
+      icon.fillStyle(0xd4e7ff, 1);
+      icon.fillTriangle(0, -13, 11, -4, -11, -4);
+      icon.fillRect(-8, -1, 16, 11);
+      return icon;
+    }
+
+    const kind = action as AttackKind;
+    const fighterId = this.playerOne.config.id;
+    icon.lineStyle(4, 0x102421, 1);
+    icon.fillStyle(0x102421, 1);
+
+    switch (`${fighterId}:${kind}`) {
+      case "proposal-rock:light":
+        icon.fillCircle(-7, 2, 9);
+        icon.fillCircle(9, -4, 12);
+        icon.strokeLineShape(new Phaser.Geom.Line(-24, 14, 24, 14));
+        break;
+      case "proposal-rock:heavy":
+        icon.fillStyle(0xffef7d, 1);
+        icon.fillPoints(this.makeStarPoints(0, 0, 5, 7, 21), true);
+        icon.lineStyle(3, 0x102421, 1);
+        icon.strokePoints(this.makeStarPoints(0, 0, 5, 7, 21), true);
+        break;
+      case "proposal-rock:special":
+        icon.fillTriangle(-17, 11, 17, 11, 0, -22);
+        icon.strokeLineShape(new Phaser.Geom.Line(-22, 19, 22, 19));
+        break;
+      case "chelan:light":
+        icon.strokeCircle(0, 0, 15);
+        icon.strokeLineShape(new Phaser.Geom.Line(-20, 0, 20, 0));
+        icon.strokeLineShape(new Phaser.Geom.Line(0, -20, 0, 20));
+        break;
+      case "chelan:heavy":
+        icon.fillStyle(0x7ee8ff, 1);
+        icon.fillCircle(0, 0, 17);
+        icon.lineStyle(3, 0x102421, 1);
+        icon.strokeCircle(0, 0, 17);
+        icon.strokeLineShape(new Phaser.Geom.Line(-17, 0, 17, 0));
+        icon.strokeLineShape(new Phaser.Geom.Line(0, -17, 0, 17));
+        break;
+      case "chelan:special":
+        icon.fillStyle(0x102421, 1);
+        icon.fillPoints([new Phaser.Math.Vector2(4, -24), new Phaser.Math.Vector2(-10, -1), new Phaser.Math.Vector2(3, -1), new Phaser.Math.Vector2(-5, 24), new Phaser.Math.Vector2(16, -7), new Phaser.Math.Vector2(2, -7)], true);
+        break;
+      case "ocean:light":
+        icon.fillCircle(0, 6, 13);
+        icon.fillTriangle(0, -22, -12, 5, 12, 5);
+        break;
+      case "ocean:heavy":
+        icon.strokeLineShape(new Phaser.Geom.Line(-24, 8, -10, -5));
+        icon.strokeLineShape(new Phaser.Geom.Line(-10, -5, 4, 8));
+        icon.strokeLineShape(new Phaser.Geom.Line(4, 8, 22, -6));
+        break;
+      case "ocean:special":
+        icon.strokeCircle(-8, 3, 13);
+        icon.strokeCircle(9, -3, 13);
+        icon.strokeLineShape(new Phaser.Geom.Line(-21, 17, 21, 17));
+        break;
+      case "rip-rap:light":
+        icon.fillTriangle(-15, 16, -2, -20, 10, 16);
+        icon.fillTriangle(2, 16, 16, -8, 23, 16);
+        break;
+      case "rip-rap:heavy":
+        icon.fillCircle(-11, 5, 10);
+        icon.fillCircle(6, -5, 14);
+        icon.fillCircle(16, 10, 8);
+        break;
+      case "rip-rap:special":
+        icon.strokeCircle(0, 0, 19);
+        icon.fillTriangle(0, -18, 12, 10, -12, 10);
+        break;
+      case "the-house:light":
+        icon.strokeRect(-17, -9, 34, 24);
+        icon.strokeLineShape(new Phaser.Geom.Line(-20, -9, 0, -24));
+        icon.strokeLineShape(new Phaser.Geom.Line(20, -9, 0, -24));
+        break;
+      case "the-house:heavy":
+        icon.strokeLineShape(new Phaser.Geom.Line(-20, 8, 8, -20));
+        icon.fillRect(6, -23, 15, 9);
+        icon.fillRect(-23, 8, 10, 12);
+        break;
+      case "the-house:special":
+        icon.strokeCircle(0, 0, 19);
+        icon.strokeLineShape(new Phaser.Geom.Line(-17, 5, 17, -5));
+        icon.fillCircle(18, -6, 5);
+        break;
+      default:
+        icon.fillCircle(0, 0, 15);
+        icon.lineStyle(3, 0xffef7d, 1);
+        icon.strokeCircle(0, 0, 8);
+    }
+
+    return icon;
+  }
+
+  private makeStarPoints(x: number, y: number, points: number, innerRadius: number, outerRadius: number) {
+    const result: Phaser.Math.Vector2[] = [];
+    const total = points * 2;
+    for (let index = 0; index < total; index += 1) {
+      const radius = index % 2 === 0 ? outerRadius : innerRadius;
+      const angle = -Math.PI / 2 + (index / total) * Math.PI * 2;
+      result.push(new Phaser.Math.Vector2(x + Math.cos(angle) * radius, y + Math.sin(angle) * radius));
+    }
+    return result;
   }
 
   private triggerHaptic(action: ControlAction) {
@@ -888,7 +1002,11 @@ export class FightScene extends Phaser.Scene {
 
   private tryAttack(actor: RuntimeFighter, kind: AttackKind, time: number) {
     if (actor.attack || actor.cooldowns[kind] > time || actor.isBlocking) return;
-    if (kind === "special" && actor.specialCharge < SPECIAL_CHARGE_MAX) return;
+    if (kind === "special" && actor.specialCharge < SPECIAL_CHARGE_MAX) {
+      actor.cooldowns.special = time + 220;
+      this.flashMoveLabel(actor.sprite.x, actor.sprite.y - 136, "CHARGE");
+      return;
+    }
     const attack = actor.config.attacks[kind];
     const isProposalSlam = actor.config.id === "proposal-rock" && kind === "special";
     const isProposalMine = actor.config.id === "proposal-rock" && kind === "heavy";
