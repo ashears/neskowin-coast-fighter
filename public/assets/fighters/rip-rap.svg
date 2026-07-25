@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="420" viewBox="0 0 320 420">
+  <rect width="320" height="420" fill="none"/>
+  <polygon points="66,344 94,210 146,270 178,124 220,254 268,190 250,344" fill="#6f766d"/>
+  <polygon points="104,330 134,232 166,288 194,190 224,330" fill="#9ba09a" opacity="0.7"/>
+  <text x="160" y="390" text-anchor="middle" font-family="Arial, sans-serif" font-size="34" font-weight="700" fill="#f8f0db">Rip Rap</text>
+</svg>

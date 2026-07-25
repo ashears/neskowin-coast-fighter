@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#86b9c4"/>
+      <stop offset="0.55" stop-color="#e7d7b2"/>
+      <stop offset="1" stop-color="#c4a36a"/>
+    </linearGradient>
+    <linearGradient id="water" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2d7387"/>
+      <stop offset="1" stop-color="#79b6bd"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="720" fill="url(#sky)"/>
+  <rect y="318" width="1280" height="132" fill="url(#water)" opacity="0.86"/>
+  <path d="M0 392 C160 360 280 430 430 394 C590 355 720 424 880 390 C1040 352 1130 420 1280 382 L1280 452 L0 452 Z" fill="#f3f1df" opacity="0.9"/>
+  <rect y="448" width="1280" height="272" fill="#c9ad77"/>
+  <path d="M0 540 C180 502 290 580 470 536 C680 485 810 581 1025 532 C1130 508 1200 512 1280 528 L1280 720 L0 720 Z" fill="#b89761" opacity="0.62"/>
+  <path d="M520 318 C500 250 538 196 594 184 C660 170 714 216 728 282 C742 342 692 374 620 370 C568 368 532 354 520 318 Z" fill="#55625a"/>
+  <path d="M548 302 C558 236 610 204 654 222 C690 238 700 276 694 318 C654 296 603 295 548 302 Z" fill="#6f7b72" opacity="0.7"/>
+  <rect x="880" y="284" width="180" height="94" fill="#b77f55"/>
+  <polygon points="868,284 970,214 1072,284" fill="#6b4536"/>
+  <rect x="910" y="318" width="42" height="60" fill="#395e66"/>
+  <rect x="990" y="320" width="44" height="42" fill="#e8dcbf"/>
+  <text x="640" y="670" text-anchor="middle" font-family="Arial, sans-serif" font-size="30" font-weight="700" fill="#493b2d">Neskowin Coast Arena Placeholder</text>
+</svg>
