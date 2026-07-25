@@ -1,11 +1,10 @@
 import Phaser from "phaser";
-import { campaignLevels, getCampaignProgress, isCampaignLevelUnlocked } from "../campaign";
-import { fighters, getFighter } from "../fighters";
+import { STARTING_FIGHTER_ID, campaignLevels, getCampaignProgress, isCampaignLevelUnlocked } from "../campaign";
+import { getFighter } from "../fighters";
 import { getLevel } from "../levels";
 import type { MatchSelection } from "../types";
 
 export class CampaignSelectScene extends Phaser.Scene {
-  private selectedFighterIndex = 0;
   private readonly sourceMapBounds = { x: 134, y: 156, width: 1012, height: 426 };
   private readonly displayMapBounds = { x: 20, y: 112, width: 1240, height: 502 };
 
@@ -21,7 +20,6 @@ export class CampaignSelectScene extends Phaser.Scene {
     this.children.removeAll();
     const { width, height } = this.scale;
     const progress = getCampaignProgress();
-    this.selectedFighterIndex = this.getAvailableFighterIndex(this.selectedFighterIndex);
 
     this.add.image(width / 2, height / 2, "beach2").setDisplaySize(width, height).setAlpha(0.72);
     this.add.rectangle(width / 2, height / 2, width, height, 0x071210, 0.36);
@@ -66,7 +64,6 @@ export class CampaignSelectScene extends Phaser.Scene {
       this.addCampaignNode(index);
     });
 
-    this.addPlayerPicker(width - 146, 166);
     this.addButton(86, 48, "Back", () => this.scene.start("TitleScene"), 118, 48, 18);
 
     const unlockedNames = progress.unlockedFighterIds.map((id) => getFighter(id).displayName).join("  /  ");
@@ -80,32 +77,6 @@ export class CampaignSelectScene extends Phaser.Scene {
         padding: { x: 14, y: 7 },
       })
       .setOrigin(0.5);
-  }
-
-  private addPlayerPicker(x: number, y: number) {
-    const fighter = fighters[this.selectedFighterIndex];
-    this.add.rectangle(x, y, 238, 150, 0x101820, 0.9).setStrokeStyle(4, 0xf7f2e6, 0.84).setDepth(18);
-    this.add
-      .text(x, y - 58, "PLAYER", {
-        fontFamily: "Impact, system-ui, sans-serif",
-        fontSize: "25px",
-        color: "#f3d86f",
-        fontStyle: "900",
-      })
-      .setOrigin(0.5)
-      .setDepth(19);
-    this.add.image(x, y - 6, fighter.spriteKey).setDisplaySize(this.getPreviewWidth(fighter.id), this.getPreviewHeight(fighter.id)).setDepth(19);
-    this.add
-      .text(x, y + 54, fighter.displayName, {
-        fontFamily: "system-ui, sans-serif",
-        fontSize: "18px",
-        color: "#fff7e6",
-        fontStyle: "900",
-      })
-      .setOrigin(0.5)
-      .setDepth(19);
-    this.addSmallButton(x - 92, y + 4, "<", () => this.changePlayer(-1));
-    this.addSmallButton(x + 92, y + 4, ">", () => this.changePlayer(1));
   }
 
   private drawMapBase() {
@@ -255,50 +226,12 @@ export class CampaignSelectScene extends Phaser.Scene {
 
     const selection: MatchSelection = {
       mode: "campaign",
-      playerOneId: fighters[this.selectedFighterIndex].id,
+      playerOneId: STARTING_FIGHTER_ID,
       playerTwoId: level.opponentId,
       levelId: level.levelId,
       campaignLevelId: level.id,
     };
     this.scene.start("FightScene", selection);
-  }
-
-  private changePlayer(delta: number) {
-    const progress = getCampaignProgress();
-    let nextIndex = this.selectedFighterIndex;
-    for (let step = 0; step < fighters.length; step += 1) {
-      nextIndex = (nextIndex + delta + fighters.length) % fighters.length;
-      if (progress.unlockedFighterIds.includes(fighters[nextIndex].id)) {
-        this.selectedFighterIndex = nextIndex;
-        this.render();
-        return;
-      }
-    }
-  }
-
-  private getAvailableFighterIndex(preferredIndex: number) {
-    const progress = getCampaignProgress();
-    if (progress.unlockedFighterIds.includes(fighters[preferredIndex]?.id)) return preferredIndex;
-    const fallback = fighters.findIndex((fighter) => progress.unlockedFighterIds.includes(fighter.id));
-    return Math.max(0, fallback);
-  }
-
-  private getPreviewWidth(id: string) {
-    if (id === "proposal-rock") return 120;
-    if (id === "chelan") return 126;
-    if (id === "ocean") return 124;
-    return 82;
-  }
-
-  private getPreviewHeight(id: string) {
-    if (id === "proposal-rock") return 90;
-    if (id === "chelan") return 76;
-    if (id === "ocean") return 82;
-    return 102;
-  }
-
-  private addSmallButton(x: number, y: number, label: string, onClick: () => void) {
-    this.addButton(x, y, label, onClick, 38, 42, 22);
   }
 
   private addButton(

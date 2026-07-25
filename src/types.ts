@@ -14,6 +14,14 @@ export interface AttackConfig {
 export interface FighterConfig {
   id: string;
   displayName: string;
+  title: string;
+  role: string;
+  rarity: "Common" | "Rare" | "Epic" | "Legendary" | "Boss";
+  bio: string;
+  strengths: string[];
+  weaknesses: string[];
+  passiveName: string;
+  passiveDescription: string;
   spriteKey: string;
   maxHealth: number;
   maxShield: number;

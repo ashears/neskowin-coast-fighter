@@ -3,6 +3,7 @@ import "./style.css";
 import { BootScene } from "./scenes/BootScene";
 import { CampaignSelectScene } from "./scenes/CampaignSelectScene";
 import { CharacterUnlockScene } from "./scenes/CharacterUnlockScene";
+import { CharacterViewerScene } from "./scenes/CharacterViewerScene";
 import { CharacterSelectScene } from "./scenes/CharacterSelectScene";
 import { FightScene } from "./scenes/FightScene";
 import { LevelSelectScene } from "./scenes/LevelSelectScene";
@@ -30,7 +31,7 @@ const config: Phaser.Types.Core.GameConfig = {
   input: {
     activePointers: 8,
   },
-  scene: [BootScene, TitleScene, OnlineScene, CampaignSelectScene, CharacterSelectScene, LevelSelectScene, FightScene, ResultScene, CharacterUnlockScene],
+  scene: [BootScene, TitleScene, OnlineScene, CampaignSelectScene, CharacterSelectScene, LevelSelectScene, FightScene, ResultScene, CharacterUnlockScene, CharacterViewerScene],
 };
 
 new Phaser.Game(config);

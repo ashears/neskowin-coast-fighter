@@ -404,6 +404,7 @@ export class FightScene extends Phaser.Scene {
     if (!this.oceanBossActive && !this.proposalRockBossActive) this.resolveAttacks(this.playerTwo, this.playerOne, time);
     this.updateProjectiles(time);
     this.updateStarfishMines(time);
+    this.clampActiveFightersToArena();
     this.updateHud(time);
     if (this.isOnlineHost() && time - this.lastOnlineStateAt >= 50) {
       this.lastOnlineStateAt = time;
@@ -1779,7 +1780,7 @@ export class FightScene extends Phaser.Scene {
       this.flashMoveLabel(opponent.sprite.x, opponent.sprite.y - 132, "LAUNCHED");
     }
 
-    if (launchAge >= PROPOSAL_SPIN_LAUNCH_MS || actor.sprite.x <= 54 || actor.sprite.x >= this.scale.width - 54) {
+    if (launchAge >= PROPOSAL_SPIN_LAUNCH_MS || this.isFighterPushingArenaEdge(actor, charge.direction)) {
       this.finishProposalSpinCharge(actor);
     }
   }
@@ -1790,6 +1791,12 @@ export class FightScene extends Phaser.Scene {
     return xDistance <= range && yDistance < 140;
   }
 
+  private isFighterPushingArenaEdge(actor: RuntimeFighter, direction: 1 | -1) {
+    const body = actor.sprite.body as Phaser.Physics.Arcade.Body;
+    const edgePadding = 2;
+    return direction < 0 ? body.left <= edgePadding : body.right >= this.scale.width - edgePadding;
+  }
+
   private finishProposalSpinCharge(actor: RuntimeFighter) {
     actor.attack = undefined;
     actor.sprite.setAlpha(1);
@@ -1798,6 +1805,33 @@ export class FightScene extends Phaser.Scene {
     actor.sprite.setAngularVelocity(0);
     actor.sprite.setMaxVelocity(DEFAULT_FIGHTER_MAX_VELOCITY_X, DEFAULT_FIGHTER_MAX_VELOCITY_Y);
     actor.sprite.clearTint();
+    this.clampFighterToArena(actor);
+  }
+
+  private clampActiveFightersToArena() {
+    this.clampFighterToArena(this.playerOne);
+    this.clampFighterToArena(this.playerTwo);
+  }
+
+  private clampFighterToArena(actor: RuntimeFighter) {
+    if (!actor.sprite.visible) return;
+    const body = actor.sprite.body as Phaser.Physics.Arcade.Body;
+    let nextX = actor.sprite.x;
+    let blockedDirection: 1 | -1 | 0 = 0;
+
+    if (body.left < 0) {
+      nextX += -body.left;
+      blockedDirection = -1;
+    } else if (body.right > this.scale.width) {
+      nextX -= body.right - this.scale.width;
+      blockedDirection = 1;
+    }
+
+    if (nextX !== actor.sprite.x) {
+      actor.sprite.setX(nextX);
+      if (blockedDirection < 0 && body.velocity.x < 0) actor.sprite.setVelocityX(0);
+      if (blockedDirection > 0 && body.velocity.x > 0) actor.sprite.setVelocityX(0);
+    }
   }
 
   private createSpinLaunchBurst(x: number, y: number, direction: 1 | -1, ratio: number) {

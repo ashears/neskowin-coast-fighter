@@ -59,7 +59,7 @@ export class TitleScene extends Phaser.Scene {
 
     if (this.activeMenu === "main") {
       this.addButton(width / 2 - 150, 430, "Start Game", () => this.showStartMenu(), 280, 88, -4);
-      this.addButton(width / 2 + 150, 430, "View Characters", () => this.startMode("ai"), 300, 88, 4);
+      this.addButton(width / 2 + 150, 430, "View Characters", () => this.scene.start("CharacterViewerScene"), 300, 88, 4);
     } else {
       this.addButton(width / 2 - 290, 430, "Campaign", () => this.scene.start("CampaignSelectScene"), 255, 88, -5);
       this.addButton(width / 2, 430, "Single Battle", () => this.startMode("local"), 285, 88, 0);

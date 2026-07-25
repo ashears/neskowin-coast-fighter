@@ -71,10 +71,16 @@ class OnlineSession {
   }
 
   async listRooms(): Promise<OnlineRoom[]> {
-    const response = await fetch(`${getRelayHttpUrl()}/rooms`, { cache: "no-store" });
-    if (!response.ok) throw new Error(`Room browser failed: ${response.status}`);
-    const data = (await response.json()) as { rooms?: OnlineRoom[] };
-    return Array.isArray(data.rooms) ? data.rooms : [];
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 3000);
+    try {
+      const response = await fetch(`${getRelayHttpUrl()}/rooms`, { cache: "no-store", signal: controller.signal });
+      if (!response.ok) throw new Error(`Room browser failed: ${response.status}`);
+      const data = (await response.json()) as { rooms?: OnlineRoom[] };
+      return Array.isArray(data.rooms) ? data.rooms : [];
+    } finally {
+      window.clearTimeout(timeout);
+    }
   }
 
   connect(role: OnlineRole, roomCode?: string) {

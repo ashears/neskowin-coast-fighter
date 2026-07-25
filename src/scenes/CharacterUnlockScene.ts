@@ -84,8 +84,13 @@ export class CharacterUnlockScene extends Phaser.Scene {
 
     this.cameras.main.flash(260, 255, 244, 180, false);
     this.cameras.main.shake(180, 0.006);
-    this.addButton(width / 2 - 146, 660, "Map", () => this.scene.start("CampaignSelectScene"));
-    this.addButton(width / 2 + 146, 660, "Title", () => this.scene.start("TitleScene"));
+    this.addButton(width / 2, 660, "View Character", () =>
+      this.scene.start("CharacterViewerScene", {
+        fighterId: fighter.id,
+        returnScene: "CampaignSelectScene",
+        fromUnlock: true,
+      }),
+    );
   }
 
   private createRays(x: number, y: number) {

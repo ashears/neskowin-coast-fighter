@@ -11,12 +11,14 @@ export class OnlineScene extends Phaser.Scene {
   private cleanup?: () => void;
   private refreshEvent?: Phaser.Time.TimerEvent;
   private loadingRooms = false;
+  private isShutDown = false;
 
   constructor() {
     super("OnlineScene");
   }
 
   create() {
+    this.isShutDown = false;
     const { width, height } = this.scale;
     this.add.image(width / 2, height / 2, "beach2").setDisplaySize(width, height).setAlpha(0.72);
     this.add.rectangle(width / 2, height / 2, width, height, 0x070b11, 0.46);
@@ -68,6 +70,7 @@ export class OnlineScene extends Phaser.Scene {
       }
     });
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.isShutDown = true;
       this.cleanup?.();
       this.cleanup = undefined;
       this.refreshEvent?.remove(false);
@@ -82,20 +85,23 @@ export class OnlineScene extends Phaser.Scene {
     if (this.loadingRooms) return;
     this.loadingRooms = true;
     try {
-      this.rooms = await onlineSession.listRooms();
+      const rooms = await onlineSession.listRooms();
+      if (this.isShutDown) return;
+      this.rooms = rooms;
       if (this.selectedRoomCode && !this.rooms.some((room) => room.roomCode === this.selectedRoomCode)) {
         this.selectedRoomCode = "";
       }
       this.renderRooms();
       this.refreshStatus(this.rooms.length ? "Select an open game, then join." : "No open games found.");
     } catch {
+      if (this.isShutDown) return;
       this.rooms = [];
       this.selectedRoomCode = "";
       this.renderRooms();
       this.refreshStatus("Online server unavailable.");
     } finally {
       this.loadingRooms = false;
-      this.updateJoinButton();
+      if (!this.isShutDown) this.updateJoinButton();
     }
   }
 
@@ -171,7 +177,8 @@ export class OnlineScene extends Phaser.Scene {
   private updateJoinButton() {
     const enabled = Boolean(this.selectedRoomCode);
     this.joinButton?.setFillStyle(enabled ? 0xe8c66b : 0x778088, enabled ? 1 : 0.72);
-    this.joinButton?.setInteractive(enabled ? { useHandCursor: true } : false);
+    if (enabled) this.joinButton?.setInteractive({ useHandCursor: true });
+    else this.joinButton?.disableInteractive();
     this.joinButtonText?.setColor(enabled ? "#101820" : "#dbe0df");
     this.joinButtonText?.setAlpha(enabled ? 1 : 0.74);
   }
@@ -202,7 +209,8 @@ export class OnlineScene extends Phaser.Scene {
     const click = () => {
       if (isEnabled()) onClick();
     };
-    button.setInteractive(isEnabled() ? { useHandCursor: true } : false);
+    if (isEnabled()) button.setInteractive({ useHandCursor: true });
+    else button.disableInteractive();
     button.on("pointerover", () => {
       if (isEnabled()) button.setFillStyle(0xf3d98c);
     });
