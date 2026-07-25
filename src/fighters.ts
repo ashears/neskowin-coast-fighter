@@ -18,12 +18,12 @@ export const fighters: FighterConfig[] = [
     jumpPower: 670,
     defense: 0.82,
     tint: 0xffffff,
-    specialName: "Proposal Body Slam",
+    specialName: "Proposal Spin Charge",
     aiProfile: "defensive",
     attacks: {
-      light: { ...baseAttacks.light, damage: 8, range: 86 },
-      heavy: { ...baseAttacks.heavy, damage: 18, range: 92, knockback: 610, cooldown: 1180, windup: 90, active: 120 },
-      special: { ...baseAttacks.special, damage: 25, range: 210, knockback: 760, cooldown: 2100, windup: 260, active: 260 },
+      light: { ...baseAttacks.heavy, damage: 15, range: 92, knockback: 560, cooldown: 820, windup: 70, active: 120 },
+      heavy: { ...baseAttacks.special, damage: 25, range: 210, knockback: 760, cooldown: 2100, windup: 260, active: 260 },
+      special: { ...baseAttacks.special, damage: 31, range: 126, knockback: 900, cooldown: 2400, windup: 0, active: 560 },
     },
   },
   {

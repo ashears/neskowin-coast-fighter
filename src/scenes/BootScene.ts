@@ -8,6 +8,7 @@ export class BootScene extends Phaser.Scene {
   }
 
   preload() {
+    this.load.image("campaign-map", "assets/backgrounds/campaign-map.png");
     for (const level of levels) {
       this.load.image(level.textureKey, level.assetPath);
     }

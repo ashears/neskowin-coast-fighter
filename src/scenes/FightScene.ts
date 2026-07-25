@@ -14,6 +14,13 @@ type AttackState = {
     launched: boolean;
     impacted: boolean;
   };
+  spinCharge?: {
+    charging: boolean;
+    launched: boolean;
+    chargeStartedAt: number;
+    chargeRatio: number;
+    direction: 1 | -1;
+  };
 };
 type BeachProjectileKind = "beachBall" | "shovel" | "fish" | "chair" | "towel" | "person";
 type OceanWaveKind = "breaker" | "cross" | "sneaker";
@@ -105,6 +112,13 @@ const blankControls = (): ButtonState => ({
 });
 
 const COOLDOWN_HUD_ATTACK_KINDS: AttackKind[] = ["light", "heavy"];
+const PROPOSAL_SPIN_CHARGE_MAX_MS = 1450;
+const PROPOSAL_SPIN_LAUNCH_MS = 620;
+const PROPOSAL_SPIN_MIN_RATIO = 0.24;
+const DEFAULT_FIGHTER_MAX_VELOCITY_X = 430;
+const DEFAULT_FIGHTER_MAX_VELOCITY_Y = 980;
+const GROUND_HEIGHT = 34;
+const FIGHTER_FOOT_INSET = GROUND_HEIGHT / 2;
 
 export class FightScene extends Phaser.Scene {
   private selection!: MatchSelection;
@@ -160,7 +174,7 @@ export class FightScene extends Phaser.Scene {
     this.add.rectangle(width / 2, height / 2, width, height, this.oceanBossActive ? 0x071b24 : 0x0b1817, this.oceanBossActive ? 0.08 : 0.16);
     if (this.oceanBossActive) this.createOceanBossArena();
 
-    this.ground = this.add.rectangle(width / 2, this.fightFloorY(height), width, 34, 0x4a594e, 1);
+    this.ground = this.add.rectangle(width / 2, this.fightFloorY(height), width, GROUND_HEIGHT, 0x4a594e, 1);
     this.physics.add.existing(this.ground, true);
 
     const playerOneConfig = getFighter(this.selection.playerOneId);
@@ -215,7 +229,7 @@ export class FightScene extends Phaser.Scene {
   }
 
   private fighterBaselineY(height: number) {
-    return height - 279;
+    return this.fightFloorY(height);
   }
 
   private createOceanBossArena() {
@@ -230,7 +244,7 @@ export class FightScene extends Phaser.Scene {
       .setStrokeStyle(4, 0xd7fbff, 0.36)
       .setBlendMode(Phaser.BlendModes.ADD)
       .setDepth(2);
-    this.add.rectangle(width / 2, this.fightFloorY(height) + 16, width, 34, 0x7a6746, 0.5).setDepth(2);
+    this.add.rectangle(width / 2, this.fightFloorY(height) + FIGHTER_FOOT_INSET, width, GROUND_HEIGHT, 0x7a6746, 0.5).setDepth(2);
     this.add
       .text(width / 2, 116, "The Ocean", {
         fontFamily: "system-ui, sans-serif",
@@ -296,18 +310,15 @@ export class FightScene extends Phaser.Scene {
     sprite.setDisplaySize(displaySize.width, displaySize.height);
     sprite.setCollideWorldBounds(true);
     sprite.setDragX(1600);
-    sprite.setMaxVelocity(430, 980);
+    sprite.setMaxVelocity(DEFAULT_FIGHTER_MAX_VELOCITY_X, DEFAULT_FIGHTER_MAX_VELOCITY_Y);
     if (config.id === "proposal-rock") {
-      this.setDisplayedBodySize(sprite, 188, 138);
+      this.setDisplayedBody(sprite, 188, 138);
     } else if (config.id === "chelan") {
-      sprite.setSize(210, 118);
-      sprite.setOffset(44, 64);
+      this.setDisplayedBody(sprite, 210, 118);
     } else if (config.id === "ocean") {
-      sprite.setSize(198, 104);
-      sprite.setOffset(61, 182);
+      this.setDisplayedBody(sprite, 198, 104);
     } else {
-      sprite.setSize(108, 174);
-      sprite.setOffset(21, 10);
+      this.setDisplayedBody(sprite, 108, 174);
     }
 
     const nameLabel = this.add
@@ -355,8 +366,11 @@ export class FightScene extends Phaser.Scene {
     };
   }
 
-  private setDisplayedBodySize(sprite: Phaser.Physics.Arcade.Sprite, width: number, height: number) {
-    sprite.setBodySize(width / sprite.scaleX, height / sprite.scaleY, true);
+  private setDisplayedBody(sprite: Phaser.Physics.Arcade.Sprite, width: number, height: number) {
+    const offsetX = (sprite.displayWidth - width) / 2;
+    const offsetY = sprite.displayHeight - FIGHTER_FOOT_INSET - height;
+    sprite.setBodySize(width / Math.abs(sprite.scaleX), height / Math.abs(sprite.scaleY), false);
+    sprite.setOffset(offsetX / Math.abs(sprite.scaleX), offsetY / Math.abs(sprite.scaleY));
   }
 
   private getFighterDisplaySize(config: FighterConfig) {
@@ -484,7 +498,8 @@ export class FightScene extends Phaser.Scene {
     this.playerOne.keyboardControls.block = this.keys.p1Block.isDown;
     this.playerOne.keyboardControls.light = Phaser.Input.Keyboard.JustDown(this.keys.p1Light);
     this.playerOne.keyboardControls.heavy = Phaser.Input.Keyboard.JustDown(this.keys.p1Heavy);
-    this.playerOne.keyboardControls.special = Phaser.Input.Keyboard.JustDown(this.keys.p1Special);
+    this.playerOne.keyboardControls.special =
+      this.playerOne.config.id === "proposal-rock" ? this.keys.p1Special.isDown : Phaser.Input.Keyboard.JustDown(this.keys.p1Special);
     this.playerOne.controls = this.mergeControls(this.playerOne.keyboardControls, this.playerOne.touchControls);
 
     if (this.selection.mode === "local") {
@@ -495,7 +510,8 @@ export class FightScene extends Phaser.Scene {
       this.playerTwo.keyboardControls.block = this.keys.p2Block.isDown;
       this.playerTwo.keyboardControls.light = Phaser.Input.Keyboard.JustDown(this.keys.p2Light);
       this.playerTwo.keyboardControls.heavy = Phaser.Input.Keyboard.JustDown(this.keys.p2Heavy);
-      this.playerTwo.keyboardControls.special = Phaser.Input.Keyboard.JustDown(this.keys.p2Special);
+      this.playerTwo.keyboardControls.special =
+        this.playerTwo.config.id === "proposal-rock" ? this.keys.p2Special.isDown : Phaser.Input.Keyboard.JustDown(this.keys.p2Special);
       this.playerTwo.controls = this.mergeControls(this.playerTwo.keyboardControls, this.playerTwo.touchControls);
     }
   }
@@ -533,7 +549,7 @@ export class FightScene extends Phaser.Scene {
 
     this.addTouchButton(width - 276, height - 102, "L", this.playerOne.touchControls, "light", "LIGHT", true);
     this.addTouchButton(width - 170, height - 102, "H", this.playerOne.touchControls, "heavy", "HEAVY", true);
-    this.addTouchButton(width - 64, height - 102, "S", this.playerOne.touchControls, "special", "SPECIAL", true);
+    this.addTouchButton(width - 64, height - 102, "S", this.playerOne.touchControls, "special", "SPECIAL", this.playerOne.config.id !== "proposal-rock");
 
     if (this.selection.mode === "local") {
       this.add
@@ -658,19 +674,22 @@ export class FightScene extends Phaser.Scene {
 
     switch (`${fighterId}:${kind}`) {
       case "proposal-rock:light":
-        icon.fillCircle(-7, 2, 9);
-        icon.fillCircle(9, -4, 12);
-        icon.strokeLineShape(new Phaser.Geom.Line(-24, 14, 24, 14));
-        break;
-      case "proposal-rock:heavy":
         icon.fillStyle(0xffef7d, 1);
         icon.fillPoints(this.makeStarPoints(0, 0, 5, 7, 21), true);
         icon.lineStyle(3, 0x102421, 1);
         icon.strokePoints(this.makeStarPoints(0, 0, 5, 7, 21), true);
         break;
-      case "proposal-rock:special":
+      case "proposal-rock:heavy":
         icon.fillTriangle(-17, 11, 17, 11, 0, -22);
         icon.strokeLineShape(new Phaser.Geom.Line(-22, 19, 22, 19));
+        break;
+      case "proposal-rock:special":
+        icon.strokeCircle(0, 0, 18);
+        icon.beginPath();
+        icon.arc(0, 0, 22, Phaser.Math.DegToRad(212), Phaser.Math.DegToRad(18), false);
+        icon.strokePath();
+        icon.fillTriangle(19, -12, 24, 4, 8, -2);
+        icon.strokeLineShape(new Phaser.Geom.Line(-19, 12, 19, -12));
         break;
       case "chelan:light":
         icon.strokeCircle(0, 0, 15);
@@ -800,9 +819,12 @@ export class FightScene extends Phaser.Scene {
     this.playerOne.shieldRechargePausedUntil = 0;
     this.playerTwo.shieldRechargePausedUntil = 0;
     this.playerOne.sprite.setPosition(this.oceanBossActive ? 290 : 260, this.fighterSpawnY(height, this.playerOne.config)).setVelocity(0, 0);
-    this.playerOne.sprite.setAlpha(1).setScale(this.playerOne.baseScaleX, this.playerOne.baseScaleY);
+    this.playerOne.sprite.setAlpha(1).setScale(this.playerOne.baseScaleX, this.playerOne.baseScaleY).setRotation(0).setAngularVelocity(0);
+    this.playerOne.sprite.setMaxVelocity(DEFAULT_FIGHTER_MAX_VELOCITY_X, DEFAULT_FIGHTER_MAX_VELOCITY_Y);
     (this.playerOne.sprite.body as Phaser.Physics.Arcade.Body).setAllowGravity(true);
     this.playerTwo.sprite.setPosition(this.oceanBossActive ? width / 2 : width - 260, this.fighterSpawnY(height, this.playerTwo.config)).setVelocity(0, 0);
+    this.playerTwo.sprite.setAlpha(1).setScale(this.playerTwo.baseScaleX, this.playerTwo.baseScaleY).setRotation(0).setAngularVelocity(0);
+    this.playerTwo.sprite.setMaxVelocity(DEFAULT_FIGHTER_MAX_VELOCITY_X, DEFAULT_FIGHTER_MAX_VELOCITY_Y);
     this.playerOne.facing = 1;
     this.playerTwo.facing = -1;
     this.playerOne.cooldowns = { light: 0, heavy: 0, special: 0 };
@@ -855,6 +877,9 @@ export class FightScene extends Phaser.Scene {
     if (controls.light) this.tryAttack(actor, "light", time);
     if (controls.heavy) this.tryAttack(actor, "heavy", time);
     if (controls.special) this.tryAttack(actor, "special", time);
+    if (actor.attack?.spinCharge?.charging) {
+      actor.sprite.setVelocityX(0);
+    }
 
     actor.sprite.setTint(actor.isBlocking ? 0xa8c6ff : actor.config.tint);
     this.updateShieldVisual(actor);
@@ -1047,12 +1072,26 @@ export class FightScene extends Phaser.Scene {
   private tryAttack(actor: RuntimeFighter, kind: AttackKind, time: number) {
     if (actor.attack || actor.cooldowns[kind] > time || actor.isBlocking) return;
     const attack = actor.config.attacks[kind];
-    const isProposalSlam = actor.config.id === "proposal-rock" && kind === "special";
-    const isProposalMine = actor.config.id === "proposal-rock" && kind === "heavy";
+    const isProposalSlam = actor.config.id === "proposal-rock" && kind === "heavy";
+    const isProposalMine = actor.config.id === "proposal-rock" && kind === "light";
+    const isProposalSpinCharge = actor.config.id === "proposal-rock" && kind === "special";
     const isChelanZap = actor.config.id === "chelan" && kind === "special";
     actor.attack = isProposalSlam
       ? { kind, startedAt: time, hit: false, slam: { launched: false, impacted: false } }
-      : { kind, startedAt: time, hit: false };
+      : isProposalSpinCharge
+        ? {
+            kind,
+            startedAt: time,
+            hit: false,
+            spinCharge: {
+              charging: true,
+              launched: false,
+              chargeStartedAt: time,
+              chargeRatio: 0,
+              direction: actor.facing,
+            },
+          }
+        : { kind, startedAt: time, hit: false };
     actor.cooldowns[kind] = time + attack.cooldown;
     if (isProposalSlam) {
       actor.sprite.setVelocity(actor.facing * 390, -760);
@@ -1064,11 +1103,18 @@ export class FightScene extends Phaser.Scene {
     if (isProposalMine) {
       actor.attack.hit = true;
       actor.sprite.setVelocityX(-actor.facing * 55);
-      this.spawnStarfishMine(actor, time);
+      this.spawnStarfishMine(actor, time, kind);
       this.flashMoveLabel(actor.sprite.x, actor.sprite.y - 132, "STARFISH MINE");
       this.time.delayedCall(180, () => {
-        if (actor.attack?.kind === "heavy" && actor.config.id === "proposal-rock") actor.attack = undefined;
+        if (actor.attack?.kind === "light" && actor.config.id === "proposal-rock") actor.attack = undefined;
       });
+      return;
+    }
+    if (isProposalSpinCharge) {
+      actor.sprite.setVelocityX(0);
+      actor.sprite.setAngularVelocity(actor.facing * 260);
+      actor.sprite.setTint(0xffef7d);
+      this.flashMoveLabel(actor.sprite.x, actor.sprite.y - 138, "CHARGE");
       return;
     }
     if (isChelanZap) {
@@ -1087,6 +1133,10 @@ export class FightScene extends Phaser.Scene {
     if (!actor.attack) return;
     if (actor.attack.slam) {
       this.resolveProposalSlam(actor, opponent, time);
+      return;
+    }
+    if (actor.attack.spinCharge) {
+      this.resolveProposalSpinCharge(actor, opponent, time);
       return;
     }
     const attack = actor.config.attacks[actor.attack.kind];
@@ -1163,8 +1213,8 @@ export class FightScene extends Phaser.Scene {
     });
   }
 
-  private spawnStarfishMine(actor: RuntimeFighter, time: number) {
-    const attack = actor.config.attacks.heavy;
+  private spawnStarfishMine(actor: RuntimeFighter, time: number, kind: AttackKind) {
+    const attack = actor.config.attacks[kind];
     const x = Phaser.Math.Clamp(actor.sprite.x - actor.facing * 58, 88, this.scale.width - 88);
     const y = this.fightFloorY(this.scale.height) - 34;
     const warning = this.add.circle(0, 0, 42, 0xffef7d, 0.12).setStrokeStyle(2, 0xffef7d, 0.35);
@@ -1368,10 +1418,120 @@ export class FightScene extends Phaser.Scene {
     this.cameras.main.shake(kind === "person" || kind === "chair" ? 95 : 55, kind === "person" ? 0.008 : 0.004);
   }
 
+  private resolveProposalSpinCharge(actor: RuntimeFighter, opponent: RuntimeFighter, time: number) {
+    if (!actor.attack?.spinCharge) return;
+    const charge = actor.attack.spinCharge;
+    const attack = actor.config.attacks.special;
+    const controls = actor.controls;
+    const body = actor.sprite.body as Phaser.Physics.Arcade.Body;
+
+    if (charge.charging) {
+      const rawRatio = Phaser.Math.Clamp((time - charge.chargeStartedAt) / PROPOSAL_SPIN_CHARGE_MAX_MS, 0, 1);
+      charge.chargeRatio = rawRatio;
+      const spinSpeed = Phaser.Math.Linear(260, 1280, rawRatio);
+      const pulse = 1 + rawRatio * 0.18 + Math.sin(time / 34) * rawRatio * 0.035;
+      actor.sprite.setVelocityX(0);
+      actor.sprite.setAngularVelocity(charge.direction * spinSpeed);
+      actor.sprite.setScale(actor.baseScaleX * pulse, actor.baseScaleY * (1 - rawRatio * 0.16));
+      actor.sprite.setAlpha(0.88 + rawRatio * 0.12);
+      actor.sprite.setTint(rawRatio > 0.72 ? 0xffef7d : 0xf3d98c);
+
+      if (!controls.special || rawRatio >= 1) {
+        const launchRatio = Math.max(Phaser.Math.Clamp(rawRatio, 0, 1), PROPOSAL_SPIN_MIN_RATIO);
+        charge.charging = false;
+        charge.launched = true;
+        charge.chargeRatio = launchRatio;
+        charge.direction = actor.facing;
+        actor.attack.startedAt = time;
+        actor.sprite.setMaxVelocity(1100, DEFAULT_FIGHTER_MAX_VELOCITY_Y);
+        actor.sprite.setVelocity(charge.direction * Phaser.Math.Linear(620, 1040, launchRatio), body.blocked.down ? -95 : body.velocity.y * 0.35);
+        actor.sprite.setAngularVelocity(charge.direction * Phaser.Math.Linear(900, 1720, launchRatio));
+        this.createSpinLaunchBurst(actor.sprite.x, actor.sprite.y, charge.direction, launchRatio);
+        this.flashMoveLabel(actor.sprite.x, actor.sprite.y - 140, launchRatio >= 0.98 ? "MAX LAUNCH" : "LAUNCH");
+        this.cameras.main.shake(80 + launchRatio * 90, 0.004 + launchRatio * 0.005);
+      }
+      return;
+    }
+
+    if (!charge.launched) return;
+    const launchAge = time - actor.attack.startedAt;
+    const launchRatio = Math.max(charge.chargeRatio, PROPOSAL_SPIN_MIN_RATIO);
+    actor.sprite.setAlpha(0.96);
+    actor.sprite.setVelocityX(charge.direction * Phaser.Math.Linear(620, 1040, launchRatio));
+    actor.sprite.setAngularVelocity(charge.direction * Phaser.Math.Linear(900, 1720, launchRatio));
+
+    if (!actor.attack.hit && this.inSpinLaunchRange(actor, opponent, attack.range)) {
+      actor.attack.hit = true;
+      this.applyDamage(opponent, actor, "special");
+      opponent.sprite.setVelocityX(charge.direction * attack.knockback * Phaser.Math.Linear(0.82, 1.18, launchRatio));
+      opponent.sprite.setVelocityY(-Phaser.Math.Linear(210, 390, launchRatio));
+      this.createSpinHitBurst(opponent.sprite.x, opponent.sprite.y - 34, launchRatio);
+      this.flashMoveLabel(opponent.sprite.x, opponent.sprite.y - 132, "LAUNCHED");
+    }
+
+    if (launchAge >= PROPOSAL_SPIN_LAUNCH_MS || actor.sprite.x <= 54 || actor.sprite.x >= this.scale.width - 54) {
+      this.finishProposalSpinCharge(actor);
+    }
+  }
+
+  private inSpinLaunchRange(actor: RuntimeFighter, opponent: RuntimeFighter, range: number) {
+    const xDistance = Math.abs(actor.sprite.x - opponent.sprite.x);
+    const yDistance = Math.abs(actor.sprite.y - opponent.sprite.y);
+    return xDistance <= range && yDistance < 140;
+  }
+
+  private finishProposalSpinCharge(actor: RuntimeFighter) {
+    actor.attack = undefined;
+    actor.sprite.setAlpha(1);
+    actor.sprite.setScale(actor.baseScaleX, actor.baseScaleY);
+    actor.sprite.setRotation(0);
+    actor.sprite.setAngularVelocity(0);
+    actor.sprite.setMaxVelocity(DEFAULT_FIGHTER_MAX_VELOCITY_X, DEFAULT_FIGHTER_MAX_VELOCITY_Y);
+    actor.sprite.clearTint();
+  }
+
+  private createSpinLaunchBurst(x: number, y: number, direction: 1 | -1, ratio: number) {
+    const ring = this.add.ellipse(x - direction * 22, y, 54, 76, 0xffef7d, 0.24).setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({
+      targets: ring,
+      scaleX: 1.2 + ratio * 1.7,
+      scaleY: 0.6 + ratio * 0.6,
+      x: x - direction * (90 + ratio * 70),
+      alpha: 0,
+      duration: 310,
+      ease: "Quad.Out",
+      onComplete: () => ring.destroy(),
+    });
+    for (let index = 0; index < 8; index += 1) {
+      const spark = this.add.circle(x - direction * Phaser.Math.Between(12, 42), y + Phaser.Math.Between(-48, 44), Phaser.Math.Between(4, 8), 0xffef7d, 0.9);
+      this.tweens.add({
+        targets: spark,
+        x: spark.x - direction * Phaser.Math.Between(80, 180),
+        y: spark.y + Phaser.Math.Between(-36, 36),
+        alpha: 0,
+        duration: Phaser.Math.Between(220, 420),
+        ease: "Cubic.Out",
+        onComplete: () => spark.destroy(),
+      });
+    }
+  }
+
+  private createSpinHitBurst(x: number, y: number, ratio: number) {
+    const burst = this.add.circle(x, y, 16, 0xffef7d, 0.38).setStrokeStyle(5, 0xfff6b8, 0.82).setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({
+      targets: burst,
+      radius: 68 + ratio * 42,
+      alpha: 0,
+      duration: 360,
+      ease: "Quad.Out",
+      onComplete: () => burst.destroy(),
+    });
+  }
+
   private resolveProposalSlam(actor: RuntimeFighter, opponent: RuntimeFighter, time: number) {
     if (!actor.attack?.slam) return;
     const slam = actor.attack.slam;
-    const attack = actor.config.attacks.special;
+    const attack = actor.config.attacks[actor.attack.kind];
     const age = time - actor.attack.startedAt;
     const body = actor.sprite.body as Phaser.Physics.Arcade.Body;
 
@@ -1391,7 +1551,7 @@ export class FightScene extends Phaser.Scene {
       this.createSlamImpact(actor.sprite.x, actor.sprite.y + 72);
 
       if (this.inSlamRange(actor, opponent, attack.range)) {
-        this.applyDamage(opponent, actor, "special");
+        this.applyDamage(opponent, actor, actor.attack.kind);
         opponent.sprite.setVelocityX(actor.facing * attack.knockback);
         opponent.sprite.setVelocityY(-360);
         this.flashMoveLabel(opponent.sprite.x, opponent.sprite.y - 130, "CRUSHED");

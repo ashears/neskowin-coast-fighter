@@ -99,11 +99,43 @@ export class CampaignSelectScene extends Phaser.Scene {
   }
 
   private drawMapBase() {
+    const mapX = 134;
+    const mapY = 156;
+    const mapWidth = 1012;
+    const mapHeight = 426;
+    const radius = 22;
+
+    if (this.textures.exists("campaign-map")) {
+      const image = this.add.image(mapX + mapWidth / 2, mapY + mapHeight / 2, "campaign-map").setDepth(1);
+      const source = this.textures.get("campaign-map").getSourceImage() as { width: number; height: number };
+      const targetRatio = mapWidth / mapHeight;
+      const sourceRatio = source.width / source.height;
+      let cropX = 0;
+      let cropY = 0;
+      let cropWidth = source.width;
+      let cropHeight = source.height;
+
+      if (sourceRatio > targetRatio) {
+        cropWidth = source.height * targetRatio;
+        cropX = (source.width - cropWidth) / 2;
+      } else {
+        cropHeight = source.width / targetRatio;
+        cropY = (source.height - cropHeight) / 2;
+      }
+
+      image.setCrop(cropX, cropY, cropWidth, cropHeight).setDisplaySize(mapWidth, mapHeight);
+
+      const frame = this.add.graphics().setDepth(2);
+      frame.lineStyle(8, 0x101820, 0.88);
+      frame.strokeRoundedRect(mapX, mapY, mapWidth, mapHeight, radius);
+      return;
+    }
+
     const graphics = this.add.graphics().setDepth(1);
     graphics.fillStyle(0xf7f2e6, 0.9);
-    graphics.fillRoundedRect(134, 156, 1012, 426, 22);
+    graphics.fillRoundedRect(mapX, mapY, mapWidth, mapHeight, radius);
     graphics.lineStyle(8, 0x101820, 0.88);
-    graphics.strokeRoundedRect(134, 156, 1012, 426, 22);
+    graphics.strokeRoundedRect(mapX, mapY, mapWidth, mapHeight, radius);
 
     graphics.fillStyle(0x2f8f84, 0.34);
     graphics.beginPath();

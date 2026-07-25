@@ -1,4 +1,3 @@
-import { DataConnection, Peer } from "peerjs";
 import type { AttackKind, GameMode, MatchResult, MatchSelection } from "./types";
 
 export type OnlineRole = "host" | "guest";
@@ -26,6 +25,11 @@ export interface MatchNetState {
   roundOver: boolean;
 }
 
+export interface OnlineRoom {
+  roomCode: string;
+  createdAt?: number;
+}
+
 export type OnlineMessage =
   | { type: "created"; roomCode: string }
   | { type: "joined"; roomCode: string }
@@ -38,15 +42,7 @@ export type OnlineMessage =
   | { type: "error"; message: string };
 
 type Listener = (message: OnlineMessage) => void;
-type WireMessage = OnlineMessage | { type: "join-request"; roomCode: string };
-
-const ROOM_PREFIX = "quick-game-coast";
-const PEER_OPTIONS = {
-  debug: 1,
-  config: {
-    iceServers: [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:global.stun.twilio.com:3478" }],
-  },
-};
+type WireMessage = OnlineMessage | { type: "create" } | { type: "join"; roomCode: string };
 
 const blankControls = (): ButtonState => ({
   left: false,
@@ -67,32 +63,66 @@ class OnlineSession {
   latestResult?: MatchResult;
   latestState?: MatchNetState;
   remoteControls: ButtonState = blankControls();
-  private peer?: Peer;
-  private connection?: DataConnection;
+  private socket?: WebSocket;
   private listeners = new Set<Listener>();
 
   get connected() {
-    return Boolean(this.connection?.open);
+    return this.socket?.readyState === WebSocket.OPEN;
+  }
+
+  async listRooms(): Promise<OnlineRoom[]> {
+    const response = await fetch(`${getRelayHttpUrl()}/rooms`, { cache: "no-store" });
+    if (!response.ok) throw new Error(`Room browser failed: ${response.status}`);
+    const data = (await response.json()) as { rooms?: OnlineRoom[] };
+    return Array.isArray(data.rooms) ? data.rooms : [];
   }
 
   connect(role: OnlineRole, roomCode?: string) {
     this.disconnect();
     this.role = role;
-    if (!this.browserSupportsWebRtc()) {
+
+    if (typeof WebSocket === "undefined") {
       this.status = "This browser does not support online play";
       this.emit({ type: "error", message: this.status });
       return;
     }
 
-    if (role === "host") this.createRoom();
-    else this.joinRoom(roomCode);
+    const normalizedCode = roomCode?.trim().toUpperCase() ?? "";
+    if (role === "guest" && !normalizedCode) {
+      this.status = "Select a room";
+      this.emit({ type: "error", message: this.status });
+      return;
+    }
+
+    this.roomCode = normalizedCode;
+    this.status = role === "host" ? "Creating room..." : "Joining room...";
+    const socket = new WebSocket(getRelayWsUrl());
+    this.socket = socket;
+
+    socket.addEventListener("open", () => {
+      if (role === "host") this.send({ type: "create" });
+      else this.send({ type: "join", roomCode: normalizedCode });
+    });
+    socket.addEventListener("message", (event) => this.handleMessage(event.data));
+    socket.addEventListener("close", () => {
+      if (this.socket !== socket) return;
+      this.socket = undefined;
+      this.remoteControls = blankControls();
+      if (this.status !== "Offline") {
+        this.status = "Other player disconnected";
+        this.emit({ type: "peer-left" });
+      }
+    });
+    socket.addEventListener("error", () => {
+      if (this.socket !== socket) return;
+      this.status = "Online server connection failed";
+      this.emit({ type: "error", message: this.status });
+    });
   }
 
   disconnect() {
-    this.connection?.close();
-    this.peer?.destroy();
-    this.connection = undefined;
-    this.peer = undefined;
+    this.socket?.close();
+    this.socket = undefined;
     this.role = undefined;
     this.roomCode = "";
     this.latestSelection = undefined;
@@ -109,7 +139,7 @@ class OnlineSession {
 
   send(message: WireMessage) {
     if (!this.connected) return;
-    this.connection?.send(message);
+    this.socket?.send(JSON.stringify(message));
   }
 
   sendInput(controls: ButtonState) {
@@ -131,87 +161,15 @@ class OnlineSession {
     this.send({ type: "match-result", result });
   }
 
-  private createRoom() {
-    const roomCode = createRoomCode();
-    this.roomCode = roomCode;
-    this.status = "Creating room...";
-    this.peer = new Peer(roomCodeToPeerId(roomCode), PEER_OPTIONS);
-    this.peer.on("open", () => {
-      this.status = `Room ${roomCode} ready`;
-      this.emit({ type: "created", roomCode });
-    });
-    this.peer.on("connection", (connection) => {
-      if (this.connection) {
-        connection.on("open", () => connection.send({ type: "error", message: "Room is already full" }));
-        connection.close();
-        return;
-      }
-      this.bindConnection(connection);
-      this.status = "Other player connecting...";
-      connection.on("open", () => {
-        this.status = "Other player connected";
-        connection.send({ type: "joined", roomCode });
-        this.emit({ type: "peer-joined" });
-      });
-    });
-    this.peer.on("error", (error) => {
-      if (error.type === "unavailable-id") {
-        this.status = "Room code collision. Try creating a room again.";
-      } else {
-        this.status = `Online connection failed: ${error.type}`;
-      }
-      this.emit({ type: "error", message: this.status });
-    });
-  }
-
-  private joinRoom(roomCode?: string) {
-    const normalizedCode = roomCode?.trim().toUpperCase() ?? "";
-    if (!normalizedCode) {
-      this.status = "Enter a room code";
-      this.emit({ type: "error", message: this.status });
+  private handleMessage(data: unknown) {
+    let message: OnlineMessage;
+    try {
+      message = JSON.parse(String(data)) as OnlineMessage;
+    } catch {
       return;
     }
-
-    this.roomCode = normalizedCode;
-    this.status = "Joining room...";
-    this.peer = new Peer(PEER_OPTIONS);
-    this.peer.on("open", () => {
-      const connection = this.peer?.connect(roomCodeToPeerId(normalizedCode), { reliable: true, serialization: "json" });
-      if (!connection) return;
-      this.bindConnection(connection);
-      connection.on("open", () => {
-        this.status = `Joined room ${normalizedCode}`;
-        connection.send({ type: "join-request", roomCode: normalizedCode });
-      });
-    });
-    this.peer.on("error", (error) => {
-      this.status = error.type === "peer-unavailable" ? "Room not found" : `Online connection failed: ${error.type}`;
-      this.emit({ type: "error", message: this.status });
-    });
-  }
-
-  private bindConnection(connection: DataConnection) {
-    this.connection = connection;
-    connection.on("data", (data) => this.handleMessage(data));
-    connection.on("close", () => {
-      this.connection = undefined;
-      this.remoteControls = blankControls();
-      this.status = "Other player disconnected";
-      this.emit({ type: "peer-left" });
-    });
-    connection.on("error", () => {
-      this.status = "Peer connection failed";
-      this.emit({ type: "error", message: this.status });
-    });
-  }
-
-  private handleMessage(data: unknown) {
-    const message = data as WireMessage;
     if (!message || typeof message !== "object" || !("type" in message)) return;
 
-    if (message.type === "join-request") {
-      return;
-    }
     if (message.type === "created" || message.type === "joined") {
       this.roomCode = message.roomCode;
       this.status = message.type === "created" ? `Room ${message.roomCode} ready` : `Joined room ${message.roomCode}`;
@@ -227,6 +185,8 @@ class OnlineSession {
       this.latestState = message.state;
     } else if (message.type === "error") {
       this.status = message.message;
+    } else if (message.type === "peer-left") {
+      this.status = "Other player disconnected";
     }
 
     this.emit(message);
@@ -235,19 +195,24 @@ class OnlineSession {
   private emit(message: OnlineMessage) {
     this.listeners.forEach((listener) => listener(message));
   }
-
-  private browserSupportsWebRtc() {
-    return typeof RTCPeerConnection !== "undefined";
-  }
 }
 
-function createRoomCode() {
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  return Array.from({ length: 4 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join("");
+function getRelayHttpUrl() {
+  const configured = getConfiguredRelayUrl();
+  if (configured) return configured.replace(/^ws/, "http").replace(/\/$/, "");
+  return `${window.location.protocol}//${window.location.hostname}:8080`;
 }
 
-function roomCodeToPeerId(roomCode: string) {
-  return `${ROOM_PREFIX}-${roomCode.toLowerCase()}`;
+function getRelayWsUrl() {
+  const configured = getConfiguredRelayUrl();
+  if (configured) return configured.replace(/^http/, "ws").replace(/\/$/, "");
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${protocol}//${window.location.hostname}:8080`;
+}
+
+function getConfiguredRelayUrl() {
+  const env = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env;
+  return env?.VITE_ONLINE_SERVER_URL;
 }
 
 export const onlineSession = new OnlineSession();

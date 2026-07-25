@@ -5,7 +5,23 @@ import os from "node:os";
 const PORT = Number(process.env.PORT ?? 8080);
 const rooms = new Map();
 
-const server = http.createServer((_request, response) => {
+const server = http.createServer((request, response) => {
+  if (request.url === "/rooms") {
+    response.writeHead(200, {
+      "access-control-allow-origin": "*",
+      "cache-control": "no-store",
+      "content-type": "application/json",
+    });
+    response.end(
+      JSON.stringify({
+        rooms: Array.from(rooms.entries())
+          .filter(([, room]) => room.host && !room.guest)
+          .map(([roomCode, room]) => ({ roomCode, createdAt: room.createdAt })),
+      }),
+    );
+    return;
+  }
+
   response.writeHead(200, { "content-type": "text/plain" });
   response.end("Neskowin Coast Fighter online relay is running.\n");
 });
@@ -52,7 +68,7 @@ function handleMessage(client, payload) {
 
   if (message.type === "create") {
     const roomCode = createRoomCode();
-    rooms.set(roomCode, { host: client, guest: undefined });
+    rooms.set(roomCode, { host: client, guest: undefined, createdAt: Date.now() });
     client.roomCode = roomCode;
     client.role = "host";
     send(client, { type: "created", roomCode });
