@@ -10,7 +10,7 @@ Recommended final format:
 
 Duck Flag online ability assets:
 
-- `projectiles/duck-flag-joey-harrington.jpg`: Joey Harrington photo from Wikimedia Commons, CC BY 3.0.
-- `projectiles/duck-flag-lamichael-james.jpg`: LaMichael James photo from Wikimedia Commons, CC BY 2.0.
-- `projectiles/duck-flag-mascot-motorcycle.gif`: Oregon Ducks motorcycle entrance GIF from GIFDB.
+- `projectiles/duck-flag-quarterback-cutout.png`: generated transparent cutout used for the charged pass summon.
+- `projectiles/duck-flag-runner-cutout.png`: generated transparent cutout used for the runner summon.
+- `projectiles/duck-flag-mascot-motorcycle-cutout.png`: generated transparent cutout used for the motorcycle summon.
 - `sounds/duck-flag-motorcycle.mp3`: recent cut of "It Never Rains at Autzen Stadium" from local Downloads.

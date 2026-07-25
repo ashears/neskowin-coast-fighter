@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import { STARTING_FIGHTER_ID, campaignLevels, getCampaignProgress, isCampaignLevelUnlocked } from "../campaign";
 import { getFighter } from "../fighters";
 import { getLevel } from "../levels";
+import { rerenderOnResize } from "../responsive";
 import type { MatchSelection } from "../types";
 
 export class CampaignSelectScene extends Phaser.Scene {
@@ -13,6 +14,7 @@ export class CampaignSelectScene extends Phaser.Scene {
   }
 
   create() {
+    rerenderOnResize(this, () => this.render());
     this.render();
   }
 

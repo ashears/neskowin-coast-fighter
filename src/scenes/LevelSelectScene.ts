@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import { getFighter } from "../fighters";
 import { levels } from "../levels";
 import { onlineSession } from "../online";
+import { rerenderOnResize } from "../responsive";
 import type { GameMode, MatchSelection } from "../types";
 
 interface LevelSelectData {
@@ -28,6 +29,7 @@ export class LevelSelectScene extends Phaser.Scene {
   }
 
   create() {
+    rerenderOnResize(this, () => this.render());
     this.render();
   }
 

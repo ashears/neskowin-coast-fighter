@@ -10,16 +10,18 @@ import { LevelSelectScene } from "./scenes/LevelSelectScene";
 import { OnlineScene } from "./scenes/OnlineScene";
 import { ResultScene } from "./scenes/ResultScene";
 import { TitleScene } from "./scenes/TitleScene";
+import { DESIGN_HEIGHT, DESIGN_WIDTH } from "./responsive";
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
   parent: "app",
   backgroundColor: "#102421",
   scale: {
-    mode: Phaser.Scale.FIT,
+    mode: Phaser.Scale.EXPAND,
     autoCenter: Phaser.Scale.CENTER_BOTH,
-    width: 1280,
-    height: 720,
+    width: DESIGN_WIDTH,
+    height: DESIGN_HEIGHT,
+    autoRound: true,
   },
   physics: {
     default: "arcade",

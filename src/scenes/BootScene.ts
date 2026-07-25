@@ -19,9 +19,9 @@ export class BootScene extends Phaser.Scene {
     this.load.image("projectile-towel", "assets/projectiles/towel.svg");
     this.load.image("projectile-person", "assets/projectiles/tourist.svg");
     this.load.image("projectile-starfish", "assets/projectiles/starfish.png");
-    this.load.image("duck-flag-joey", "assets/projectiles/duck-flag-joey-harrington.jpg");
-    this.load.image("duck-flag-lamichael", "assets/projectiles/duck-flag-lamichael-james.jpg");
-    this.load.image("duck-flag-mascot-motorcycle", "assets/projectiles/duck-flag-mascot-motorcycle.gif");
+    this.load.image("duck-flag-joey", "assets/projectiles/duck-flag-quarterback-cutout.png");
+    this.load.image("duck-flag-lamichael", "assets/projectiles/duck-flag-runner-cutout.png");
+    this.load.image("duck-flag-mascot-motorcycle", "assets/projectiles/duck-flag-mascot-motorcycle-cutout.png");
     this.load.audio("duck-flag-motorcycle-sfx", "assets/sounds/duck-flag-motorcycle.mp3");
     for (const fighter of fighters) {
       const extension = fighter.id === "proposal-rock" || fighter.id === "chelan" || fighter.id === "duck-flag" ? "png" : "svg";

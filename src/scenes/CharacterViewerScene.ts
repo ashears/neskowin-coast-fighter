@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { campaignLevels, isFighterUnlocked, STARTING_FIGHTER_ID } from "../campaign";
 import { fighters } from "../fighters";
+import { rerenderOnResize } from "../responsive";
 import type { AttackConfig, AttackKind, FighterConfig } from "../types";
 
 interface CharacterViewerData {
@@ -31,6 +32,7 @@ export class CharacterViewerScene extends Phaser.Scene {
   }
 
   create() {
+    rerenderOnResize(this, () => this.render());
     this.render();
   }
 

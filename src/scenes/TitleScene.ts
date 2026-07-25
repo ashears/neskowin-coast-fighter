@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import { rerenderOnResize } from "../responsive";
 import type { GameMode } from "../types";
 
 type TitleMenu = "main" | "start";
@@ -12,6 +13,7 @@ export class TitleScene extends Phaser.Scene {
 
   create() {
     this.activeMenu = "main";
+    rerenderOnResize(this, () => this.render());
     this.render();
   }
 

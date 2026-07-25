@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import { isFighterUnlocked, STARTING_FIGHTER_ID } from "../campaign";
 import { fighters } from "../fighters";
 import { onlineSession } from "../online";
+import { rerenderOnResize } from "../responsive";
 import type { GameMode } from "../types";
 
 interface CharacterSelectData {
@@ -27,6 +28,7 @@ export class CharacterSelectScene extends Phaser.Scene {
   }
 
   create() {
+    rerenderOnResize(this, () => this.render());
     this.render();
   }
 
@@ -51,7 +53,7 @@ export class CharacterSelectScene extends Phaser.Scene {
     this.addFighterPanel(width * 0.28, 328, "P1", this.playerOneIndex, -1, 0xe43f2e);
     this.addFighterPanel(width * 0.72, 328, this.mode === "ai" || this.mode === "campaign" ? "AI" : "P2", this.playerTwoIndex, 1, 0x1976d2);
     this.addRoster(width / 2, height - 142);
-    this.addBattleModeToggle(width / 2, 558);
+    this.addBattleModeToggle(width / 2 + 300, height - 54);
 
     this.addButton(width / 2, height - 54, "Choose Level", () => {
       this.scene.start("LevelSelectScene", {
@@ -219,7 +221,7 @@ export class CharacterSelectScene extends Phaser.Scene {
 
     const label = this.mode === "local" ? "Two Local Players" : "One Player vs AI";
     this.add
-      .text(x, y - 42, label, {
+      .text(x, y - 38, label, {
         fontFamily: "system-ui, sans-serif",
         fontSize: "21px",
         color: "#fff7e6",
@@ -231,7 +233,7 @@ export class CharacterSelectScene extends Phaser.Scene {
 
     this.addButton(
       x,
-      y + 20,
+      y,
       this.mode === "local" ? "Use AI Opponent" : "Add Local P2",
       () => {
         this.mode = this.mode === "local" ? "ai" : "local";
