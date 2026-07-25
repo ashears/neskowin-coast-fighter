@@ -17,7 +17,7 @@ export class BootScene extends Phaser.Scene {
     this.load.image("projectile-chair", "assets/projectiles/chair.svg");
     this.load.image("projectile-towel", "assets/projectiles/towel.svg");
     this.load.image("projectile-person", "assets/projectiles/tourist.svg");
-    this.load.image("projectile-starfish", "assets/projectiles/starfish.webp");
+    this.load.image("projectile-starfish", "assets/projectiles/starfish.png");
     for (const fighter of fighters) {
       const extension = fighter.id === "proposal-rock" || fighter.id === "chelan" ? "png" : "svg";
       this.load.image(fighter.spriteKey, `assets/fighters/${fighter.id}.${extension}`);
