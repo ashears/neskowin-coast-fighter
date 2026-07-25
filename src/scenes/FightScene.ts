@@ -2116,8 +2116,8 @@ export class FightScene extends Phaser.Scene {
   }
 
   private createDuckJoeySummon(actor: RuntimeFighter) {
-    const summonX = Phaser.Math.Clamp(actor.sprite.x - actor.facing * 78, 86, this.scale.width - 86);
-    const summonY = actor.sprite.y - 54;
+    const summonX = Phaser.Math.Clamp(actor.sprite.x, 86, this.scale.width - 86);
+    const summonY = actor.sprite.y;
     const glow = this.add.ellipse(0, 44, 96, 24, 0xf8ff65, 0.22).setBlendMode(Phaser.BlendModes.ADD);
     const joey = this.add.image(0, 0, "duck-flag-joey").setDisplaySize(62, 132).setFlipX(actor.facing < 0);
     const container = this.add.container(summonX, summonY, [glow, joey]).setDepth(18).setAlpha(0.95);
@@ -2137,7 +2137,7 @@ export class FightScene extends Phaser.Scene {
       actor.sprite.setVelocityX(0);
       actor.sprite.setTint(rawRatio > 0.75 ? 0xffef7d : 0xd7ff4f);
       this.setFighterScale(actor, actor.baseScaleX * (1 + rawRatio * 0.08), actor.baseScaleY * (1 - rawRatio * 0.05));
-      charge.summon?.setPosition(Phaser.Math.Clamp(actor.sprite.x - actor.facing * 78, 86, this.scale.width - 86), actor.sprite.y - 54);
+      charge.summon?.setPosition(Phaser.Math.Clamp(actor.sprite.x, 86, this.scale.width - 86), actor.sprite.y);
       charge.summon?.setScale(1 + rawRatio * 0.08);
 
       if (!controls.heavy || rawRatio >= 1) {
