@@ -1,25 +1,47 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
   <defs>
     <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#86b9c4"/>
-      <stop offset="0.55" stop-color="#e7d7b2"/>
-      <stop offset="1" stop-color="#c4a36a"/>
+      <stop offset="0" stop-color="#5f9cab"/>
+      <stop offset="0.46" stop-color="#d7c994"/>
+      <stop offset="1" stop-color="#8f7a56"/>
     </linearGradient>
-    <linearGradient id="water" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#2d7387"/>
-      <stop offset="1" stop-color="#79b6bd"/>
+    <linearGradient id="sea" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#164d62"/>
+      <stop offset="0.48" stop-color="#3c8da0"/>
+      <stop offset="1" stop-color="#8fc8c4"/>
     </linearGradient>
+    <linearGradient id="stage" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#43524d"/>
+      <stop offset="1" stop-color="#1b2a2a"/>
+    </linearGradient>
+    <filter id="softShadow" x="-20%" y="-40%" width="140%" height="220%">
+      <feDropShadow dx="0" dy="12" stdDeviation="10" flood-color="#071210" flood-opacity="0.34"/>
+    </filter>
   </defs>
+
   <rect width="1280" height="720" fill="url(#sky)"/>
-  <rect y="318" width="1280" height="132" fill="url(#water)" opacity="0.86"/>
-  <path d="M0 392 C160 360 280 430 430 394 C590 355 720 424 880 390 C1040 352 1130 420 1280 382 L1280 452 L0 452 Z" fill="#f3f1df" opacity="0.9"/>
-  <rect y="448" width="1280" height="272" fill="#c9ad77"/>
-  <path d="M0 540 C180 502 290 580 470 536 C680 485 810 581 1025 532 C1130 508 1200 512 1280 528 L1280 720 L0 720 Z" fill="#b89761" opacity="0.62"/>
-  <path d="M520 318 C500 250 538 196 594 184 C660 170 714 216 728 282 C742 342 692 374 620 370 C568 368 532 354 520 318 Z" fill="#55625a"/>
-  <path d="M548 302 C558 236 610 204 654 222 C690 238 700 276 694 318 C654 296 603 295 548 302 Z" fill="#6f7b72" opacity="0.7"/>
-  <rect x="880" y="284" width="180" height="94" fill="#b77f55"/>
-  <polygon points="868,284 970,214 1072,284" fill="#6b4536"/>
-  <rect x="910" y="318" width="42" height="60" fill="#395e66"/>
-  <rect x="990" y="320" width="44" height="42" fill="#e8dcbf"/>
-  <text x="640" y="670" text-anchor="middle" font-family="Arial, sans-serif" font-size="30" font-weight="700" fill="#493b2d">Neskowin Coast Arena Placeholder</text>
+  <circle cx="244" cy="132" r="58" fill="#fff0b8" opacity="0.72"/>
+  <path d="M0 288 C144 250 250 302 386 276 C548 245 675 305 836 276 C1008 244 1122 296 1280 258 L1280 428 L0 428 Z" fill="url(#sea)" opacity="0.92"/>
+  <path d="M0 348 C172 312 294 382 456 346 C624 309 758 384 936 342 C1092 306 1190 334 1280 318 L1280 424 L0 424 Z" fill="#e9f3e6" opacity="0.76"/>
+  <path d="M0 424 C180 386 330 452 516 418 C700 384 842 454 1032 412 C1146 388 1220 394 1280 404 L1280 720 L0 720 Z" fill="#b99662"/>
+  <path d="M0 546 C170 504 330 592 516 548 C710 501 860 594 1062 542 C1164 516 1226 520 1280 532 L1280 720 L0 720 Z" fill="#8c734e" opacity="0.66"/>
+
+  <path d="M506 326 C492 258 536 192 600 178 C678 160 740 220 752 296 C762 362 708 392 620 386 C560 382 516 362 506 326 Z" fill="#30403e"/>
+  <path d="M548 304 C558 238 616 206 660 226 C700 244 714 280 704 326 C662 300 604 296 548 304 Z" fill="#687872" opacity="0.74"/>
+  <path d="M884 302 L968 238 L1058 302 L1058 390 L884 390 Z" fill="#895f43" opacity="0.92"/>
+  <path d="M864 304 L970 218 L1078 304 Z" fill="#3b2f2b"/>
+  <rect x="918" y="332" width="38" height="58" fill="#203f49"/>
+  <rect x="994" y="330" width="42" height="38" fill="#eadfbd"/>
+
+  <g filter="url(#softShadow)">
+    <rect x="250" y="526" width="780" height="42" rx="8" fill="url(#stage)" stroke="#e8c66b" stroke-width="5"/>
+    <rect x="284" y="518" width="712" height="7" fill="#fff0a6" opacity="0.68"/>
+    <rect x="330" y="382" width="270" height="28" rx="7" fill="#3e514d" stroke="#83d2c9" stroke-width="4"/>
+    <rect x="680" y="382" width="270" height="28" rx="7" fill="#3e514d" stroke="#83d2c9" stroke-width="4"/>
+    <rect x="488" y="266" width="304" height="28" rx="7" fill="#3f514a" stroke="#ffef7d" stroke-width="4"/>
+  </g>
+
+  <path d="M270 592 L402 568 L524 596 L658 570 L794 598 L924 570 L1040 594" fill="none" stroke="#ead9a8" stroke-width="5" opacity="0.42"/>
+  <path d="M292 620 L434 602 L566 628 L708 602 L850 630 L996 606" fill="none" stroke="#6f5d43" stroke-width="6" opacity="0.34"/>
+  <text x="640" y="642" text-anchor="middle" font-family="Arial, sans-serif" font-size="26" font-weight="800" letter-spacing="2" fill="#fff7e6" opacity="0.92">NESKOWIN ARENA</text>
 </svg>

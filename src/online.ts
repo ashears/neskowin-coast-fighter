@@ -10,6 +10,7 @@ export interface FighterNetState {
   velocityX: number;
   velocityY: number;
   health: number;
+  lives?: number;
   shield: number;
   cooldowns: Record<AttackKind, number>;
   rounds: number;

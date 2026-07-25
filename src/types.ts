@@ -53,6 +53,7 @@ export interface MatchSelection {
 }
 
 export interface MatchResult {
+  matchKey?: string;
   winnerName: string;
   winnerId: string;
   mode: GameMode;
