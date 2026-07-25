@@ -6,6 +6,8 @@ import type { MatchSelection } from "../types";
 
 export class CampaignSelectScene extends Phaser.Scene {
   private selectedFighterIndex = 0;
+  private readonly sourceMapBounds = { x: 134, y: 156, width: 1012, height: 426 };
+  private readonly displayMapBounds = { x: 20, y: 112, width: 1240, height: 502 };
 
   constructor() {
     super("CampaignSelectScene");
@@ -23,12 +25,12 @@ export class CampaignSelectScene extends Phaser.Scene {
 
     this.add.image(width / 2, height / 2, "beach2").setDisplaySize(width, height).setAlpha(0.72);
     this.add.rectangle(width / 2, height / 2, width, height, 0x071210, 0.36);
-    this.add.rectangle(width / 2, 70, width + 80, 116, 0x101820, 0.82).setAngle(-1.5).setStrokeStyle(4, 0xe8c66b, 0.72);
+    this.add.rectangle(width / 2, 50, width + 80, 92, 0x101820, 0.82).setAngle(-1.5).setStrokeStyle(4, 0xe8c66b, 0.72);
 
     this.add
-      .text(width / 2, 54, "CAMPAIGN MAP", {
+      .text(width / 2, 38, "CAMPAIGN MAP", {
         fontFamily: "Impact, system-ui, sans-serif",
-        fontSize: "50px",
+        fontSize: "42px",
         color: "#fff7e6",
         fontStyle: "900",
         stroke: "#101820",
@@ -37,9 +39,9 @@ export class CampaignSelectScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     this.add
-      .text(width / 2, 100, "Win battles to unlock fighters and new stops along the coast", {
+      .text(width / 2, 76, "Win battles to unlock fighters and new stops along the coast", {
         fontFamily: "system-ui, sans-serif",
-        fontSize: "20px",
+        fontSize: "18px",
         color: "#dbe9df",
         fontStyle: "800",
       })
@@ -50,18 +52,26 @@ export class CampaignSelectScene extends Phaser.Scene {
       const unlocked = isCampaignLevelUnlocked(level.id);
       const completed = progress.completedLevelIds.includes(level.id);
       const nextLevel = index < campaignLevels.length - 1 ? campaignLevels[index + 1] : undefined;
-      if (nextLevel) this.drawPath(level.mapX, level.mapY, nextLevel.mapX, nextLevel.mapY, completed);
+      if (nextLevel) {
+        this.drawPath(
+          this.mapScreenX(level.mapX),
+          this.mapScreenY(level.mapY),
+          this.mapScreenX(nextLevel.mapX),
+          this.mapScreenY(nextLevel.mapY),
+          completed,
+        );
+      }
     });
     campaignLevels.forEach((level, index) => {
       this.addCampaignNode(index);
     });
 
-    this.addPlayerPicker(width - 166, 188);
-    this.addButton(98, 58, "Back", () => this.scene.start("TitleScene"), 140, 56, 20);
+    this.addPlayerPicker(width - 146, 166);
+    this.addButton(86, 48, "Back", () => this.scene.start("TitleScene"), 118, 48, 18);
 
     const unlockedNames = progress.unlockedFighterIds.map((id) => getFighter(id).displayName).join("  /  ");
     this.add
-      .text(width / 2, height - 38, `Unlocked fighters: ${unlockedNames}`, {
+      .text(width / 2, height - 24, `Unlocked fighters: ${unlockedNames}`, {
         fontFamily: "system-ui, sans-serif",
         fontSize: "19px",
         color: "#fff7e6",
@@ -99,31 +109,12 @@ export class CampaignSelectScene extends Phaser.Scene {
   }
 
   private drawMapBase() {
-    const mapX = 134;
-    const mapY = 156;
-    const mapWidth = 1012;
-    const mapHeight = 426;
+    const { x: mapX, y: mapY, width: mapWidth, height: mapHeight } = this.getDisplayedMapBounds();
     const radius = 22;
 
     if (this.textures.exists("campaign-map")) {
       const image = this.add.image(mapX + mapWidth / 2, mapY + mapHeight / 2, "campaign-map").setDepth(1);
-      const source = this.textures.get("campaign-map").getSourceImage() as { width: number; height: number };
-      const targetRatio = mapWidth / mapHeight;
-      const sourceRatio = source.width / source.height;
-      let cropX = 0;
-      let cropY = 0;
-      let cropWidth = source.width;
-      let cropHeight = source.height;
-
-      if (sourceRatio > targetRatio) {
-        cropWidth = source.height * targetRatio;
-        cropX = (source.width - cropWidth) / 2;
-      } else {
-        cropHeight = source.width / targetRatio;
-        cropY = (source.height - cropHeight) / 2;
-      }
-
-      image.setCrop(cropX, cropY, cropWidth, cropHeight).setDisplaySize(mapWidth, mapHeight);
+      image.setDisplaySize(mapWidth, mapHeight);
 
       const frame = this.add.graphics().setDepth(2);
       frame.lineStyle(8, 0x101820, 0.88);
@@ -139,21 +130,21 @@ export class CampaignSelectScene extends Phaser.Scene {
 
     graphics.fillStyle(0x2f8f84, 0.34);
     graphics.beginPath();
-    graphics.moveTo(160, 480);
-    graphics.lineTo(302, 398);
-    graphics.lineTo(446, 424);
-    graphics.lineTo(618, 338);
-    graphics.lineTo(808, 374);
-    graphics.lineTo(1014, 244);
-    graphics.lineTo(1126, 224);
-    graphics.lineTo(1126, 560);
-    graphics.lineTo(160, 560);
+    graphics.moveTo(this.mapScreenX(160), this.mapScreenY(480));
+    graphics.lineTo(this.mapScreenX(302), this.mapScreenY(398));
+    graphics.lineTo(this.mapScreenX(446), this.mapScreenY(424));
+    graphics.lineTo(this.mapScreenX(618), this.mapScreenY(338));
+    graphics.lineTo(this.mapScreenX(808), this.mapScreenY(374));
+    graphics.lineTo(this.mapScreenX(1014), this.mapScreenY(244));
+    graphics.lineTo(this.mapScreenX(1126), this.mapScreenY(224));
+    graphics.lineTo(this.mapScreenX(1126), this.mapScreenY(560));
+    graphics.lineTo(this.mapScreenX(160), this.mapScreenY(560));
     graphics.closePath();
     graphics.fillPath();
 
     graphics.lineStyle(4, 0x1976d2, 0.42);
     for (let x = 188; x < 1120; x += 72) {
-      graphics.lineBetween(x, 190, x - 68, 548);
+      graphics.lineBetween(this.mapScreenX(x), this.mapScreenY(190), this.mapScreenX(x - 68), this.mapScreenY(548));
     }
   }
 
@@ -173,16 +164,17 @@ export class CampaignSelectScene extends Phaser.Scene {
     const opponent = getFighter(level.opponentId);
     const arena = getLevel(level.levelId);
     const accent = completed ? 0x4fb477 : unlocked ? arena.accent : 0x69706d;
+    const isBossEncounter = level.levelId === "proposal-rock-boss";
 
-    const container = this.add.container(level.mapX, level.mapY).setDepth(10);
-    const glow = this.add.circle(0, 0, 50, accent, unlocked ? 0.28 : 0.08);
+    const container = this.add.container(this.mapScreenX(level.mapX), this.mapScreenY(level.mapY)).setDepth(10);
+    const glow = this.add.circle(0, 0, 38, accent, unlocked ? 0.24 : 0.07);
     const button = this.add
-      .circle(0, 0, 34, unlocked ? 0xf7f2e6 : 0x7b827e, 1)
-      .setStrokeStyle(6, unlocked ? 0x101820 : 0x3c4641);
+      .circle(0, 0, 25, unlocked ? 0xf7f2e6 : 0x7b827e, 1)
+      .setStrokeStyle(4, unlocked ? 0x101820 : 0x3c4641);
     const number = this.add
       .text(0, -1, completed ? "DONE" : unlocked ? String(index + 1) : "LOCK", {
         fontFamily: "Impact, system-ui, sans-serif",
-        fontSize: unlocked && !completed ? "28px" : "19px",
+        fontSize: unlocked && !completed ? "22px" : "14px",
         color: "#101820",
         fontStyle: "900",
       })
@@ -197,24 +189,64 @@ export class CampaignSelectScene extends Phaser.Scene {
         strokeThickness: 5,
       })
       .setOrigin(0.5);
-    const opponentLabel = this.add
-      .text(0, 91, `vs ${opponent.displayName}`, {
+    const encounterLabel = this.add
+      .text(0, 91, isBossEncounter ? "BOSS Encounter" : `vs ${opponent.displayName}`, {
         fontFamily: "system-ui, sans-serif",
-        fontSize: "15px",
-        color: "#f7f2e6",
+        fontSize: isBossEncounter ? "17px" : "15px",
+        color: isBossEncounter ? "#101820" : "#f7f2e6",
         fontStyle: "900",
-        backgroundColor: "rgba(16, 24, 32, 0.74)",
-        padding: { x: 8, y: 3 },
+        backgroundColor: isBossEncounter ? "#f3d86f" : "rgba(16, 24, 32, 0.74)",
+        padding: { x: 9, y: 4 },
       })
       .setOrigin(0.5);
+    const modeLabel = isBossEncounter
+      ? this.add
+          .text(0, 121, "Trash Pickup Minigame", {
+            fontFamily: "system-ui, sans-serif",
+            fontSize: "13px",
+            color: "#fff7e6",
+            fontStyle: "900",
+            backgroundColor: "rgba(16, 24, 32, 0.74)",
+            padding: { x: 8, y: 3 },
+          })
+          .setOrigin(0.5)
+      : undefined;
 
-    container.add([glow, button, number, label, opponentLabel]);
+    container.add([glow, button, number, label, encounterLabel]);
+    if (modeLabel) container.add(modeLabel);
     if (unlocked) {
       button.setInteractive({ useHandCursor: true }).on("pointerdown", () => this.startCampaignBattle(level.id));
       number.setInteractive({ useHandCursor: true }).on("pointerdown", () => this.startCampaignBattle(level.id));
       button.on("pointerover", () => button.setFillStyle(0xf3d98c));
       button.on("pointerout", () => button.setFillStyle(0xf7f2e6));
     }
+  }
+
+  private mapScreenX(sourceX: number) {
+    const ratio = (sourceX - this.sourceMapBounds.x) / this.sourceMapBounds.width;
+    const mapBounds = this.getDisplayedMapBounds();
+    return mapBounds.x + ratio * mapBounds.width;
+  }
+
+  private mapScreenY(sourceY: number) {
+    const ratio = (sourceY - this.sourceMapBounds.y) / this.sourceMapBounds.height;
+    const mapBounds = this.getDisplayedMapBounds();
+    return mapBounds.y + ratio * mapBounds.height;
+  }
+
+  private getDisplayedMapBounds() {
+    if (!this.textures.exists("campaign-map")) return this.displayMapBounds;
+
+    const source = this.textures.get("campaign-map").getSourceImage() as { width: number; height: number };
+    const scale = Math.min(this.displayMapBounds.width / source.width, this.displayMapBounds.height / source.height);
+    const width = source.width * scale;
+    const height = source.height * scale;
+    return {
+      x: this.displayMapBounds.x + (this.displayMapBounds.width - width) / 2,
+      y: this.displayMapBounds.y + (this.displayMapBounds.height - height) / 2,
+      width,
+      height,
+    };
   }
 
   private startCampaignBattle(campaignLevelId: string) {

@@ -38,6 +38,13 @@ interface TouchCooldownView {
   text: Phaser.GameObjects.Text;
 }
 
+interface TouchButtonView {
+  action: ControlAction;
+  ring: Phaser.GameObjects.Arc;
+  button: Phaser.GameObjects.Arc;
+  icon: Phaser.GameObjects.GameObject & Phaser.GameObjects.Components.Transform;
+}
+
 interface BeachProjectile {
   object: Phaser.GameObjects.Image;
   owner: RuntimeFighter;
@@ -63,6 +70,17 @@ interface OceanWave {
   knockback: number;
   oneShot: boolean;
   hit: boolean;
+  expiresAt: number;
+}
+
+interface ProposalTrashPrompt {
+  object: Phaser.GameObjects.Container;
+  shadow: Phaser.GameObjects.Ellipse;
+  action: ControlAction;
+  targetY: number;
+  velocityY: number;
+  state: "falling" | "waiting";
+  landedAt: number;
   expiresAt: number;
 }
 
@@ -112,6 +130,10 @@ const blankControls = (): ButtonState => ({
 });
 
 const COOLDOWN_HUD_ATTACK_KINDS: AttackKind[] = ["light", "heavy"];
+const PROPOSAL_TRASH_ACTIONS: ControlAction[] = ["left", "right", "up", "down", "block", "light", "heavy", "special"];
+const PROPOSAL_TRASH_DAMAGE_TO_BOSS = 18;
+const PROPOSAL_TRASH_DAMAGE_TO_PLAYER = 12;
+const PROPOSAL_TRASH_RESPONSE_MS = 3000;
 const PROPOSAL_SPIN_CHARGE_MAX_MS = 1450;
 const PROPOSAL_SPIN_LAUNCH_MS = 620;
 const PROPOSAL_SPIN_MIN_RATIO = 0.24;
@@ -129,6 +151,7 @@ export class FightScene extends Phaser.Scene {
   private shieldBars: Phaser.GameObjects.Rectangle[] = [];
   private abilityCooldownViews: AbilityCooldownView[] = [];
   private touchCooldownViews: TouchCooldownView[] = [];
+  private touchButtonViews: TouchButtonView[] = [];
   private timerText?: Phaser.GameObjects.Text;
   private roundText?: Phaser.GameObjects.Text;
   private keys?: Record<string, Phaser.Input.Keyboard.Key>;
@@ -144,6 +167,15 @@ export class FightScene extends Phaser.Scene {
   private oceanWaves: OceanWave[] = [];
   private nextOceanWaveAt = 0;
   private nextSneakerWaveAt = 0;
+  private proposalRockBossActive = false;
+  private proposalRockBossSprite?: Phaser.GameObjects.Image;
+  private proposalRockBossBaseScaleX = 1;
+  private proposalRockBossBaseScaleY = 1;
+  private proposalTrashPrompt?: ProposalTrashPrompt;
+  private nextProposalTrashAt = 0;
+  private previousProposalBossControls = blankControls();
+  private proposalBossPromptText?: Phaser.GameObjects.Text;
+  private proposalBossTimerText?: Phaser.GameObjects.Text;
   private lastOnlineStateAt = 0;
   private onlineStatusText?: Phaser.GameObjects.Text;
   private onlineCleanup?: () => void;
@@ -155,6 +187,7 @@ export class FightScene extends Phaser.Scene {
   init(data: MatchSelection) {
     this.selection = { ...data, levelId: data.levelId ?? "neskowin" };
     this.oceanBossActive = this.selection.levelId === "ocean-boss";
+    this.proposalRockBossActive = this.selection.levelId === "proposal-rock-boss";
     this.roundTime = 60;
     this.roundStartedAt = 0;
     this.roundOver = false;
@@ -163,6 +196,11 @@ export class FightScene extends Phaser.Scene {
     this.shieldBars = [];
     this.abilityCooldownViews = [];
     this.touchCooldownViews = [];
+    this.touchButtonViews = [];
+    this.proposalTrashPrompt = undefined;
+    this.previousProposalBossControls = blankControls();
+    this.proposalBossPromptText = undefined;
+    this.proposalBossTimerText = undefined;
     this.lastOnlineStateAt = 0;
     this.onlineStatusText = undefined;
   }
@@ -171,8 +209,16 @@ export class FightScene extends Phaser.Scene {
     const { width, height } = this.scale;
     const level = getLevel(this.selection.levelId);
     this.add.image(width / 2, height / 2, level.textureKey).setDisplaySize(width, height);
-    this.add.rectangle(width / 2, height / 2, width, height, this.oceanBossActive ? 0x071b24 : 0x0b1817, this.oceanBossActive ? 0.08 : 0.16);
+    this.add.rectangle(
+      width / 2,
+      height / 2,
+      width,
+      height,
+      this.oceanBossActive ? 0x071b24 : this.proposalRockBossActive ? 0x122016 : 0x0b1817,
+      this.oceanBossActive || this.proposalRockBossActive ? 0.08 : 0.16,
+    );
     if (this.oceanBossActive) this.createOceanBossArena();
+    if (this.proposalRockBossActive) this.createProposalRockBossArena();
 
     this.ground = this.add.rectangle(width / 2, this.fightFloorY(height), width, GROUND_HEIGHT, 0x4a594e, 1);
     this.physics.add.existing(this.ground, true);
@@ -182,15 +228,17 @@ export class FightScene extends Phaser.Scene {
     this.playerOne = this.createFighter(playerOneConfig, 260, this.fighterSpawnY(height, playerOneConfig), 1, "P1");
     this.playerTwo = this.createFighter(
       playerTwoConfig,
-      this.oceanBossActive ? width / 2 : width - 260,
+      this.oceanBossActive || this.proposalRockBossActive ? width / 2 : width - 260,
       this.fighterSpawnY(height, playerTwoConfig),
       -1,
-      this.oceanBossActive ? "BOSS" : this.isAiBattle() ? "AI" : "P2",
+      this.oceanBossActive || this.proposalRockBossActive ? "BOSS" : this.isAiBattle() ? "AI" : "P2",
     );
     if (this.oceanBossActive) this.configureOceanBossFighter();
+    if (this.proposalRockBossActive) this.configureProposalRockBossFighter();
+    if (this.proposalRockBossActive) this.configureProposalRockBossPlayerController();
 
-    this.physics.add.collider(this.playerOne.sprite, this.ground);
-    if (!this.oceanBossActive) {
+    if (!this.proposalRockBossActive) this.physics.add.collider(this.playerOne.sprite, this.ground);
+    if (!this.oceanBossActive && !this.proposalRockBossActive) {
       this.physics.add.collider(this.playerTwo.sprite, this.ground);
       this.physics.add.collider(this.playerOne.sprite, this.playerTwo.sprite);
     }
@@ -269,6 +317,69 @@ export class FightScene extends Phaser.Scene {
     this.playerTwo.shieldEdge.setVisible(false);
   }
 
+  private createProposalRockBossArena() {
+    const { width, height } = this.scale;
+    const floorY = this.fighterBaselineY(height);
+    this.add.rectangle(width / 2, this.fightFloorY(height) + FIGHTER_FOOT_INSET, width, GROUND_HEIGHT, 0x5a5039, 0.56).setDepth(2);
+    this.add.ellipse(width / 2, floorY - 10, 600, 86, 0x121914, 0.34).setStrokeStyle(4, 0xf2d37a, 0.22).setDepth(2);
+    this.proposalRockBossSprite = this.add.image(width / 2, floorY - 170, "fighter-proposal-rock").setDisplaySize(520, 390).setDepth(3);
+    this.proposalRockBossBaseScaleX = this.proposalRockBossSprite.scaleX;
+    this.proposalRockBossBaseScaleY = this.proposalRockBossSprite.scaleY;
+    this.add
+      .text(width / 2, 116, "Large Proposal Rock", {
+        fontFamily: "system-ui, sans-serif",
+        fontSize: "34px",
+        color: "#f8fff4",
+        fontStyle: "900",
+        stroke: "#102421",
+        strokeThickness: 7,
+      })
+      .setOrigin(0.5)
+      .setDepth(6);
+    this.proposalBossPromptText = this.add
+      .text(width / 2, 160, "Pick up the trash when it lands", {
+        fontFamily: "system-ui, sans-serif",
+        fontSize: "22px",
+        color: "#fff7e6",
+        fontStyle: "900",
+        backgroundColor: "rgba(12, 25, 23, 0.68)",
+        padding: { x: 14, y: 7 },
+      })
+      .setOrigin(0.5)
+      .setDepth(40);
+    this.proposalBossTimerText = this.add
+      .text(width / 2, 198, "", {
+        fontFamily: "Impact, system-ui, sans-serif",
+        fontSize: "30px",
+        color: "#7ee889",
+        fontStyle: "900",
+        stroke: "#102421",
+        strokeThickness: 5,
+      })
+      .setOrigin(0.5)
+      .setDepth(40);
+  }
+
+  private configureProposalRockBossFighter() {
+    const { width, height } = this.scale;
+    this.playerTwo.sprite.setPosition(width / 2, this.fighterSpawnY(height, this.playerTwo.config));
+    this.playerTwo.sprite.setVisible(false);
+    this.playerTwo.sprite.setImmovable(true);
+    (this.playerTwo.sprite.body as Phaser.Physics.Arcade.Body).setAllowGravity(false);
+    this.playerTwo.nameLabel.setVisible(false);
+    this.playerTwo.shieldAura.setVisible(false);
+    this.playerTwo.shieldEdge.setVisible(false);
+  }
+
+  private configureProposalRockBossPlayerController() {
+    this.playerOne.sprite.setPosition(-400, -400).setVelocity(0, 0).setVisible(false);
+    this.playerOne.sprite.setImmovable(true);
+    (this.playerOne.sprite.body as Phaser.Physics.Arcade.Body).setAllowGravity(false);
+    this.playerOne.nameLabel.setVisible(false);
+    this.playerOne.shieldAura.setVisible(false);
+    this.playerOne.shieldEdge.setVisible(false);
+  }
+
   update(time: number) {
     if (this.roundOver) return;
 
@@ -282,14 +393,15 @@ export class FightScene extends Phaser.Scene {
       this.playerTwo.controls = { ...blankControls(), ...onlineSession.remoteControls };
     }
     if (this.oceanBossActive) this.updateOceanBoss(time);
+    else if (this.proposalRockBossActive) this.updateProposalRockBoss(time);
     else if (this.isAiBattle()) this.updateAi(time);
 
-    this.updateFighter(this.playerOne, this.playerTwo, time);
-    if (!this.oceanBossActive) this.updateFighter(this.playerTwo, this.playerOne, time);
+    if (!this.proposalRockBossActive) this.updateFighter(this.playerOne, this.playerTwo, time);
+    if (!this.oceanBossActive && !this.proposalRockBossActive) this.updateFighter(this.playerTwo, this.playerOne, time);
     else this.updateOceanBossTarget();
     this.rechargeShields(time);
-    this.resolveAttacks(this.playerOne, this.playerTwo, time);
-    if (!this.oceanBossActive) this.resolveAttacks(this.playerTwo, this.playerOne, time);
+    if (!this.proposalRockBossActive) this.resolveAttacks(this.playerOne, this.playerTwo, time);
+    if (!this.oceanBossActive && !this.proposalRockBossActive) this.resolveAttacks(this.playerTwo, this.playerOne, time);
     this.updateProjectiles(time);
     this.updateStarfishMines(time);
     this.updateHud(time);
@@ -401,8 +513,28 @@ export class FightScene extends Phaser.Scene {
       this.add.rectangle(40, 62, 420, 7, 0x7ee8ff).setOrigin(0, 0.5),
       this.add.rectangle(width - 40, 62, 420, 7, 0x7ee8ff).setOrigin(1, 0.5),
     ];
-    this.createAbilityCooldownHud(this.playerOne, 44, 82, 1);
-    this.createAbilityCooldownHud(this.playerTwo, width - 44, 82, -1);
+    if (this.proposalRockBossActive) {
+      this.shieldBars.forEach((bar) => bar.setVisible(false));
+      this.add
+        .text(40, 82, "BEACH", {
+          fontFamily: "system-ui, sans-serif",
+          fontSize: "15px",
+          color: "#fff7e6",
+          fontStyle: "900",
+        })
+        .setOrigin(0, 0.5);
+      this.add
+        .text(width - 40, 82, "BOSS", {
+          fontFamily: "system-ui, sans-serif",
+          fontSize: "15px",
+          color: "#fff7e6",
+          fontStyle: "900",
+        })
+        .setOrigin(1, 0.5);
+    } else {
+      this.createAbilityCooldownHud(this.playerOne, 44, 82, 1);
+      this.createAbilityCooldownHud(this.playerTwo, width - 44, 82, -1);
+    }
     this.timerText = this.add
       .text(width / 2, 36, "60", {
         fontFamily: "system-ui, sans-serif",
@@ -654,6 +786,7 @@ export class FightScene extends Phaser.Scene {
         .setScrollFactor(0);
       this.touchCooldownViews.push({ kind: action as AttackKind, overlay, text: cooldownText });
     }
+    this.touchButtonViews.push({ action, ring, button, icon });
   }
 
   private createTouchButtonIcon(x: number, y: number, action: ControlAction, fighterId = this.playerOne.config.id) {
@@ -818,11 +951,11 @@ export class FightScene extends Phaser.Scene {
     this.playerTwo.shield = this.playerTwo.config.maxShield;
     this.playerOne.shieldRechargePausedUntil = 0;
     this.playerTwo.shieldRechargePausedUntil = 0;
-    this.playerOne.sprite.setPosition(this.oceanBossActive ? 290 : 260, this.fighterSpawnY(height, this.playerOne.config)).setVelocity(0, 0);
+    this.playerOne.sprite.setPosition(this.oceanBossActive || this.proposalRockBossActive ? 290 : 260, this.fighterSpawnY(height, this.playerOne.config)).setVelocity(0, 0);
     this.playerOne.sprite.setAlpha(1).setScale(this.playerOne.baseScaleX, this.playerOne.baseScaleY).setRotation(0).setAngularVelocity(0);
     this.playerOne.sprite.setMaxVelocity(DEFAULT_FIGHTER_MAX_VELOCITY_X, DEFAULT_FIGHTER_MAX_VELOCITY_Y);
     (this.playerOne.sprite.body as Phaser.Physics.Arcade.Body).setAllowGravity(true);
-    this.playerTwo.sprite.setPosition(this.oceanBossActive ? width / 2 : width - 260, this.fighterSpawnY(height, this.playerTwo.config)).setVelocity(0, 0);
+    this.playerTwo.sprite.setPosition(this.oceanBossActive || this.proposalRockBossActive ? width / 2 : width - 260, this.fighterSpawnY(height, this.playerTwo.config)).setVelocity(0, 0);
     this.playerTwo.sprite.setAlpha(1).setScale(this.playerTwo.baseScaleX, this.playerTwo.baseScaleY).setRotation(0).setAngularVelocity(0);
     this.playerTwo.sprite.setMaxVelocity(DEFAULT_FIGHTER_MAX_VELOCITY_X, DEFAULT_FIGHTER_MAX_VELOCITY_Y);
     this.playerOne.facing = 1;
@@ -847,10 +980,21 @@ export class FightScene extends Phaser.Scene {
     this.oceanWaves = [];
     this.nextOceanWaveAt = this.time.now + 900;
     this.nextSneakerWaveAt = this.time.now + Phaser.Math.Between(16000, 23000);
+    this.destroyProposalTrashPrompt();
+    this.nextProposalTrashAt = this.time.now + 850;
+    this.previousProposalBossControls = { ...this.playerOne.controls };
+    this.updateProposalTouchButtonGlow();
+    this.proposalBossTimerText?.setText("");
     if (this.oceanBossActive) {
       this.playerTwo.sprite.setVisible(false);
       this.playerTwo.nameLabel.setVisible(false);
       this.flashMoveLabel(width / 2, 176, "DODGE THE BREAKERS");
+    } else if (this.proposalRockBossActive) {
+      this.configureProposalRockBossPlayerController();
+      this.playerTwo.sprite.setVisible(false);
+      this.playerTwo.nameLabel.setVisible(false);
+      this.proposalRockBossSprite?.clearTint();
+      this.flashMoveLabel(width / 2, 176, "CLEAN THE BEACH");
     }
   }
 
@@ -874,9 +1018,10 @@ export class FightScene extends Phaser.Scene {
       actor.sprite.setVelocityX(body.velocity.x * 0.55);
     }
 
-    if (controls.light) this.tryAttack(actor, "light", time);
-    if (controls.heavy) this.tryAttack(actor, "heavy", time);
-    if (controls.special) this.tryAttack(actor, "special", time);
+    const attacksDisabled = this.proposalRockBossActive && actor === this.playerOne;
+    if (!attacksDisabled && controls.light) this.tryAttack(actor, "light", time);
+    if (!attacksDisabled && controls.heavy) this.tryAttack(actor, "heavy", time);
+    if (!attacksDisabled && controls.special) this.tryAttack(actor, "special", time);
     if (actor.attack?.spinCharge?.charging) {
       actor.sprite.setVelocityX(0);
     }
@@ -909,6 +1054,171 @@ export class FightScene extends Phaser.Scene {
     this.playerTwo.sprite.setVelocity(0, 0);
     this.playerTwo.facing = this.playerOne.sprite.x <= width / 2 ? -1 : 1;
     this.playerTwo.isBlocking = false;
+  }
+
+  private updateProposalRockBoss(time: number) {
+    const pulse = 1 + Math.sin(time / 520) * 0.018;
+    this.proposalRockBossSprite?.setScale(this.proposalRockBossBaseScaleX * pulse, this.proposalRockBossBaseScaleY * (1 + Math.sin(time / 680) * 0.012));
+
+    if (!this.proposalTrashPrompt && time >= this.nextProposalTrashAt) {
+      this.spawnProposalTrashPrompt(time);
+    }
+
+    this.updateProposalTrashPrompt(time);
+    this.updateProposalTouchButtonGlow();
+    this.previousProposalBossControls = { ...this.playerOne.controls };
+  }
+
+  private spawnProposalTrashPrompt(time: number) {
+    const { width, height } = this.scale;
+    const kind = this.pickBeachProjectileKind();
+    const config = this.getBeachProjectileConfig(kind);
+    const x = Phaser.Math.Between(170, width - 170);
+    const targetY = this.fightFloorY(height) - 45;
+    const shadow = this.add.ellipse(x, targetY + 18, 42, 12, 0x071210, 0.18).setDepth(4);
+    const warning = this.add.circle(0, 0, 34, 0xffef7d, 0.16).setStrokeStyle(3, 0xffef7d, 0.48);
+    const trash = this.add.image(0, 0, config.texture).setDisplaySize(config.size, config.size).setAngle(config.startAngle);
+    const object = this.add.container(x, -70, [warning, trash]).setDepth(12);
+
+    this.proposalTrashPrompt = {
+      object,
+      shadow,
+      action: Phaser.Utils.Array.GetRandom(PROPOSAL_TRASH_ACTIONS),
+      targetY,
+      velocityY: Phaser.Math.Between(360, 460),
+      state: "falling",
+      landedAt: 0,
+      expiresAt: time + 6200,
+    };
+    this.proposalBossPromptText?.setText("Trash incoming");
+  }
+
+  private updateProposalTrashPrompt(time: number) {
+    const prompt = this.proposalTrashPrompt;
+    if (!prompt) {
+      this.proposalBossTimerText?.setText("");
+      return;
+    }
+
+    const delta = this.game.loop.delta / 1000;
+    if (prompt.state === "falling") {
+      prompt.velocityY += 520 * delta;
+      prompt.object.y += prompt.velocityY * delta;
+      prompt.object.rotation += delta * 3.8;
+      const shadowScale = Phaser.Math.Clamp(prompt.object.y / prompt.targetY, 0.18, 1);
+      prompt.shadow.setScale(0.55 + shadowScale * 0.8, 0.55 + shadowScale * 0.42).setAlpha(0.1 + shadowScale * 0.28);
+
+      if (prompt.object.y >= prompt.targetY) {
+        prompt.object.y = prompt.targetY;
+        prompt.object.rotation = 0;
+        prompt.state = "waiting";
+        prompt.landedAt = time;
+        prompt.expiresAt = time + PROPOSAL_TRASH_RESPONSE_MS;
+        this.proposalBossPromptText?.setText(`Press ${this.getActionLabel(prompt.action)} to pick up trash`);
+        this.flashMoveLabel(prompt.object.x, prompt.object.y - 74, this.getActionLabel(prompt.action));
+      }
+      return;
+    }
+
+    const remaining = Math.max(0, prompt.expiresAt - time);
+    this.proposalBossTimerText?.setText(`${(remaining / 1000).toFixed(1)}s`);
+    prompt.object.setScale(1 + Math.sin(time / 70) * 0.055);
+
+    const pressedAction = PROPOSAL_TRASH_ACTIONS.find((action) => this.playerOne.controls[action] && !this.previousProposalBossControls[action]);
+    if (pressedAction === prompt.action) {
+      this.resolveProposalTrashPrompt(true, "PICKED UP");
+    } else if (pressedAction) {
+      this.resolveProposalTrashPrompt(false, "WRONG BUTTON");
+    } else if (time >= prompt.expiresAt) {
+      this.resolveProposalTrashPrompt(false, "TOO LATE");
+    }
+  }
+
+  private resolveProposalTrashPrompt(success: boolean, label: string) {
+    const prompt = this.proposalTrashPrompt;
+    if (!prompt) return;
+    const color = success ? 0x6ff06f : 0xff4f45;
+    if (success) {
+      this.playerTwo.health = Math.max(0, this.playerTwo.health - PROPOSAL_TRASH_DAMAGE_TO_BOSS);
+      this.proposalRockBossSprite?.setTint(0x96ff8d);
+      this.time.delayedCall(110, () => this.proposalRockBossSprite?.clearTint());
+      this.cameras.main.flash(90, 126, 232, 111, false);
+      this.cameras.main.shake(105, 0.006);
+    } else {
+      this.playerOne.health = Math.max(0, this.playerOne.health - PROPOSAL_TRASH_DAMAGE_TO_PLAYER);
+      this.cameras.main.flash(100, 255, 72, 60, false);
+      this.cameras.main.shake(150, 0.01);
+    }
+    this.createProposalTrashEffect(prompt.object.x, prompt.object.y, color, success);
+    this.flashMoveLabel(prompt.object.x, prompt.object.y - 82, label);
+    this.destroyProposalTrashPrompt();
+    this.nextProposalTrashAt = this.time.now + Phaser.Math.Between(650, 1150);
+    this.proposalBossPromptText?.setText(success ? "Trash cleaned" : "Trash hit the beach");
+    this.proposalBossTimerText?.setText("");
+  }
+
+  private createProposalTrashEffect(x: number, y: number, color: number, success: boolean) {
+    const ring = this.add.circle(x, y, 18, color, 0.28).setStrokeStyle(5, color, 0.88).setDepth(16).setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({
+      targets: ring,
+      radius: success ? 86 : 66,
+      alpha: 0,
+      duration: 360,
+      ease: "Quad.Out",
+      onComplete: () => ring.destroy(),
+    });
+    for (let index = 0; index < (success ? 14 : 9); index += 1) {
+      const spark = this.add.circle(x, y, Phaser.Math.Between(4, 8), color, 0.9).setDepth(17);
+      this.tweens.add({
+        targets: spark,
+        x: x + Phaser.Math.Between(-120, 120),
+        y: y - Phaser.Math.Between(24, 120),
+        alpha: 0,
+        duration: Phaser.Math.Between(260, 520),
+        ease: "Cubic.Out",
+        onComplete: () => spark.destroy(),
+      });
+    }
+  }
+
+  private destroyProposalTrashPrompt() {
+    if (!this.proposalTrashPrompt) return;
+    this.proposalTrashPrompt.object.destroy();
+    this.proposalTrashPrompt.shadow.destroy();
+    this.proposalTrashPrompt = undefined;
+    this.updateProposalTouchButtonGlow();
+  }
+
+  private updateProposalTouchButtonGlow() {
+    const activeAction = this.proposalTrashPrompt?.state === "waiting" ? this.proposalTrashPrompt.action : undefined;
+    for (const view of this.touchButtonViews) {
+      const active = view.action === activeAction;
+      const isAttack = view.action === "light" || view.action === "heavy" || view.action === "special";
+      view.ring.setStrokeStyle(active ? 7 : 3, active ? 0x7ee889 : 0xfff2ba, active ? 0.95 : 0.42);
+      view.ring.setFillStyle(active ? 0x7ee889 : 0x102421, active ? 0.25 : 0.42);
+      view.button.setStrokeStyle(active ? 6 : 3, active ? 0x7ee889 : 0x102421, 1);
+      if (active) {
+        view.button.setFillStyle(0xf8fff4, 1);
+        view.icon.setScale(1.12 + Math.sin(this.time.now / 92) * 0.05);
+      } else {
+        view.button.setFillStyle(isAttack ? 0xffb84d : view.action === "block" ? 0x9bc2ff : 0xf2d37a, 0.9);
+        view.icon.setScale(1);
+      }
+    }
+  }
+
+  private getActionLabel(action: ControlAction) {
+    const labels: Record<ControlAction, string> = {
+      left: "LEFT",
+      right: "RIGHT",
+      up: "UP",
+      down: "DOWN",
+      block: "BLOCK",
+      light: "LIGHT",
+      heavy: "HEAVY",
+      special: "SPECIAL",
+    };
+    return labels[action];
   }
 
   private spawnOceanWave(kind: OceanWaveKind, time: number) {
@@ -1743,7 +2053,9 @@ export class FightScene extends Phaser.Scene {
     this.updateTouchCooldownViews(time);
     const remaining = Math.max(0, this.roundTime - Math.floor((time - this.roundStartedAt) / 1000));
     this.timerText?.setText(String(remaining));
-    this.roundText?.setText(`Round ${this.roundNumber}    ${this.playerOne.rounds}-${this.playerTwo.rounds}`);
+    this.roundText?.setText(
+      this.proposalRockBossActive ? "Cleanup Boss" : `Round ${this.roundNumber}    ${this.playerOne.rounds}-${this.playerTwo.rounds}`,
+    );
   }
 
   private updateAbilityCooldownViews(time: number) {
@@ -1791,10 +2103,11 @@ export class FightScene extends Phaser.Scene {
     this.roundOver = true;
     const p1Wins = this.playerOne.health === this.playerTwo.health ? this.playerOne.health > 0 : this.playerOne.health > this.playerTwo.health;
     const winner = p1Wins ? this.playerOne : this.playerTwo;
+    const winnerName = this.proposalRockBossActive && p1Wins ? "Beach Cleanup Crew" : winner.config.displayName;
     winner.rounds += 1;
 
     const message = this.add
-      .text(this.scale.width / 2, 170, `${winner.config.displayName} wins the round`, {
+      .text(this.scale.width / 2, 170, this.proposalRockBossActive ? `${winnerName} clears the boss` : `${winnerName} wins the round`, {
         fontFamily: "system-ui, sans-serif",
         fontSize: "34px",
         color: "#fff7e6",
@@ -1806,9 +2119,9 @@ export class FightScene extends Phaser.Scene {
 
     this.time.delayedCall(1500, () => {
       message.destroy();
-      if (winner.rounds >= 2) {
+      if (winner.rounds >= 2 || this.proposalRockBossActive) {
         const result: MatchResult = {
-          winnerName: winner.config.displayName,
+          winnerName,
           winnerId: winner.config.id,
           mode: this.selection.mode,
           levelId: this.selection.levelId,

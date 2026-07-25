@@ -16,6 +16,13 @@ export const levels: LevelConfig[] = [
     accent: 0x7ee8ff,
   },
   {
+    id: "proposal-rock-boss",
+    displayName: "Proposal Rock Cleanup",
+    textureKey: "arena",
+    assetPath: "assets/backgrounds/neskowin-arena.svg",
+    accent: 0x7bcf6f,
+  },
+  {
     id: "beach1",
     displayName: "beach1",
     textureKey: "beach1",

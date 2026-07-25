@@ -1,7 +1,8 @@
 import Phaser from "phaser";
-import { campaignLevels, completeCampaignLevel } from "../campaign";
+import { campaignLevels, completeCampaignLevel, getCampaignProgress } from "../campaign";
 import { getFighter } from "../fighters";
 import { getLevel } from "../levels";
+import type { FighterConfig } from "../types";
 import type { MatchResult } from "../types";
 
 export class ResultScene extends Phaser.Scene {
@@ -20,7 +21,14 @@ export class ResultScene extends Phaser.Scene {
     const level = getLevel(this.result?.levelId ?? "neskowin");
     const campaignWon = this.result?.mode === "campaign" && this.result.campaignLevelId && this.result.winnerId === this.result.playerOneId;
     const campaignLost = this.result?.mode === "campaign" && this.result.campaignLevelId && !campaignWon;
-    const unlockedName = campaignWon ? this.completeCampaignWin(this.result!.campaignLevelId!) : undefined;
+    const unlockedFighter = campaignWon ? this.completeCampaignWin(this.result!.campaignLevelId!) : undefined;
+    if (unlockedFighter) {
+      this.scene.start("CharacterUnlockScene", {
+        fighterId: unlockedFighter.id,
+        levelId: this.result?.levelId,
+      });
+      return;
+    }
     this.add.image(width / 2, height / 2, level.textureKey).setDisplaySize(width, height).setAlpha(0.62);
     this.add.rectangle(width / 2, height / 2, width, height, 0x0b1817, 0.52);
 
@@ -42,18 +50,7 @@ export class ResultScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    if (unlockedName) {
-      this.add
-        .text(width / 2, 326, `${unlockedName} unlocked`, {
-          fontFamily: "Impact, system-ui, sans-serif",
-          fontSize: "34px",
-          color: "#f3d86f",
-          fontStyle: "900",
-          stroke: "#101820",
-          strokeThickness: 6,
-        })
-        .setOrigin(0.5);
-    } else if (campaignLost) {
+    if (campaignLost) {
       this.add
         .text(width / 2, 326, "Campaign progress needs a win", {
           fontFamily: "system-ui, sans-serif",
@@ -79,10 +76,12 @@ export class ResultScene extends Phaser.Scene {
     this.addButton(width / 2 + 150, 424, "Title", () => this.scene.start("TitleScene"));
   }
 
-  private completeCampaignWin(campaignLevelId: string) {
+  private completeCampaignWin(campaignLevelId: string): FighterConfig | undefined {
+    const priorProgress = getCampaignProgress();
     completeCampaignLevel(campaignLevelId);
     const level = campaignLevels.find((candidate) => candidate.id === campaignLevelId);
-    return level?.unlockFighterId ? getFighter(level.unlockFighterId).displayName : undefined;
+    if (!level?.unlockFighterId || priorProgress.unlockedFighterIds.includes(level.unlockFighterId)) return undefined;
+    return getFighter(level.unlockFighterId);
   }
 
   private retryCampaignBattle() {

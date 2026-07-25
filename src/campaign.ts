@@ -18,13 +18,21 @@ export const STARTING_FIGHTER_ID = "proposal-rock";
 
 export const campaignLevels: CampaignLevel[] = [
   {
+    id: "proposal-rock-cleanup",
+    displayName: "Proposal Rock Cleanup",
+    opponentId: "proposal-rock",
+    levelId: "proposal-rock-boss",
+    unlockFighterId: "chelan",
+    mapX: 1010,
+    mapY: 494,
+  },
+  {
     id: "chelan-opener",
     displayName: "Chelan Shore",
     opponentId: "chelan",
     levelId: "neskowin",
-    unlockFighterId: "chelan",
     mapX: 242,
-    mapY: 468,
+    mapY: 438,
   },
   {
     id: "rip-rap-ridge",
