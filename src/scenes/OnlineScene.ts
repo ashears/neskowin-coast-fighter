@@ -28,7 +28,7 @@ export class OnlineScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    this.addPanel(width * 0.31, 356, "HOST", "Create a room on this computer, then pick fighters and a level.", () => {
+    this.addPanel(width * 0.31, 356, "HOST", "Create a room in this browser, then pick fighters and a level.", () => {
       onlineSession.connect("host");
       this.refreshStatus();
     });
@@ -102,7 +102,7 @@ export class OnlineScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
     this.add
-      .text(x, y + 26, "Tap the code box, type the host code, then join as Player 2.", {
+      .text(x, y + 26, "Enter the room code from the host, then join the match.", {
         fontFamily: "system-ui, sans-serif",
         fontSize: "19px",
         color: "#101820",

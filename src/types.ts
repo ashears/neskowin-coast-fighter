@@ -1,4 +1,4 @@
-export type GameMode = "ai" | "local" | "online-host" | "online-guest";
+export type GameMode = "ai" | "campaign" | "local" | "online-host" | "online-guest";
 
 export type AttackKind = "light" | "heavy" | "special";
 
@@ -40,6 +40,7 @@ export interface MatchSelection {
   playerOneId: string;
   playerTwoId: string;
   levelId: string;
+  campaignLevelId?: string;
   roomCode?: string;
 }
 
@@ -48,4 +49,7 @@ export interface MatchResult {
   winnerId: string;
   mode: GameMode;
   levelId: string;
+  playerOneId?: string;
+  playerTwoId?: string;
+  campaignLevelId?: string;
 }

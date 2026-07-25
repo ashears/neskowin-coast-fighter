@@ -61,14 +61,14 @@ export class TitleScene extends Phaser.Scene {
       this.addButton(width / 2 - 150, 430, "Start Game", () => this.showStartMenu(), 280, 88, -4);
       this.addButton(width / 2 + 150, 430, "View Characters", () => this.startMode("ai"), 300, 88, 4);
     } else {
-      this.addButton(width / 2 - 290, 430, "Campaign", () => this.startMode("ai"), 255, 88, -5);
+      this.addButton(width / 2 - 290, 430, "Campaign", () => this.scene.start("CampaignSelectScene"), 255, 88, -5);
       this.addButton(width / 2, 430, "Single Battle", () => this.startMode("local"), 285, 88, 0);
       this.addButton(width / 2 + 290, 430, "Online Battle", () => this.scene.start("OnlineScene"), 285, 88, 5);
       this.addButton(width / 2, 535, "Back", () => this.showMainMenu(), 170, 62, 0);
     }
 
     this.add
-      .text(width / 2, height - 76, "WASD/F/G/H/Shift    Arrows/J/K/L/Slash    Online iPad joins as P2", {
+      .text(width / 2, height - 76, "WASD/F/G/H/Shift    Arrows/J/K/L/Slash    Online rooms work across web devices", {
         fontFamily: "system-ui, sans-serif",
         fontSize: "21px",
         color: "#f4f0e8",

@@ -18,6 +18,19 @@ type AttackState = {
 type BeachProjectileKind = "beachBall" | "shovel" | "fish" | "chair" | "towel" | "person";
 type OceanWaveKind = "breaker" | "cross" | "sneaker";
 
+interface AbilityCooldownView {
+  actor: RuntimeFighter;
+  kind: AttackKind;
+  overlay: Phaser.GameObjects.Graphics;
+  text: Phaser.GameObjects.Text;
+}
+
+interface TouchCooldownView {
+  kind: AttackKind;
+  overlay: Phaser.GameObjects.Graphics;
+  text: Phaser.GameObjects.Text;
+}
+
 interface BeachProjectile {
   object: Phaser.GameObjects.Image;
   owner: RuntimeFighter;
@@ -67,7 +80,6 @@ interface RuntimeFighter {
   baseScaleY: number;
   health: number;
   shield: number;
-  specialCharge: number;
   shieldRechargePausedUntil: number;
   rounds: number;
   facing: 1 | -1;
@@ -92,12 +104,7 @@ const blankControls = (): ButtonState => ({
   special: false,
 });
 
-const SPECIAL_CHARGE_MAX = 100;
-const SPECIAL_CHARGE_ON_BLOCK = 24;
-const SPECIAL_CHARGE_ON_HIT: Record<Exclude<AttackKind, "special">, number> = {
-  light: 16,
-  heavy: 28,
-};
+const COOLDOWN_HUD_ATTACK_KINDS: AttackKind[] = ["light", "heavy"];
 
 export class FightScene extends Phaser.Scene {
   private selection!: MatchSelection;
@@ -106,7 +113,8 @@ export class FightScene extends Phaser.Scene {
   private ground?: Phaser.GameObjects.Rectangle;
   private healthBars: Phaser.GameObjects.Rectangle[] = [];
   private shieldBars: Phaser.GameObjects.Rectangle[] = [];
-  private specialBars: Phaser.GameObjects.Rectangle[] = [];
+  private abilityCooldownViews: AbilityCooldownView[] = [];
+  private touchCooldownViews: TouchCooldownView[] = [];
   private timerText?: Phaser.GameObjects.Text;
   private roundText?: Phaser.GameObjects.Text;
   private keys?: Record<string, Phaser.Input.Keyboard.Key>;
@@ -139,7 +147,8 @@ export class FightScene extends Phaser.Scene {
     this.roundNumber = 1;
     this.healthBars = [];
     this.shieldBars = [];
-    this.specialBars = [];
+    this.abilityCooldownViews = [];
+    this.touchCooldownViews = [];
     this.lastOnlineStateAt = 0;
     this.onlineStatusText = undefined;
   }
@@ -154,13 +163,15 @@ export class FightScene extends Phaser.Scene {
     this.ground = this.add.rectangle(width / 2, this.fightFloorY(height), width, 34, 0x4a594e, 1);
     this.physics.add.existing(this.ground, true);
 
-    this.playerOne = this.createFighter(getFighter(this.selection.playerOneId), 260, this.fighterSpawnY(height), 1, "P1");
+    const playerOneConfig = getFighter(this.selection.playerOneId);
+    const playerTwoConfig = getFighter(this.selection.playerTwoId);
+    this.playerOne = this.createFighter(playerOneConfig, 260, this.fighterSpawnY(height, playerOneConfig), 1, "P1");
     this.playerTwo = this.createFighter(
-      getFighter(this.selection.playerTwoId),
+      playerTwoConfig,
       this.oceanBossActive ? width / 2 : width - 260,
-      this.fighterSpawnY(height),
+      this.fighterSpawnY(height, playerTwoConfig),
       -1,
-      this.oceanBossActive ? "BOSS" : this.selection.mode === "ai" ? "AI" : "P2",
+      this.oceanBossActive ? "BOSS" : this.isAiBattle() ? "AI" : "P2",
     );
     if (this.oceanBossActive) this.configureOceanBossFighter();
 
@@ -199,8 +210,12 @@ export class FightScene extends Phaser.Scene {
     return height - 250;
   }
 
-  private fighterSpawnY(height: number) {
-    return height - 365;
+  private fighterSpawnY(height: number, config: FighterConfig) {
+    return this.fighterBaselineY(height) - this.getFighterDisplaySize(config).height / 2;
+  }
+
+  private fighterBaselineY(height: number) {
+    return height - 279;
   }
 
   private createOceanBossArena() {
@@ -231,7 +246,7 @@ export class FightScene extends Phaser.Scene {
 
   private configureOceanBossFighter() {
     const { width, height } = this.scale;
-    this.playerTwo.sprite.setPosition(width / 2, this.fighterSpawnY(height));
+    this.playerTwo.sprite.setPosition(width / 2, this.fighterSpawnY(height, this.playerTwo.config));
     this.playerTwo.sprite.setVisible(false);
     this.playerTwo.sprite.setImmovable(true);
     (this.playerTwo.sprite.body as Phaser.Physics.Arcade.Body).setAllowGravity(false);
@@ -253,7 +268,7 @@ export class FightScene extends Phaser.Scene {
       this.playerTwo.controls = { ...blankControls(), ...onlineSession.remoteControls };
     }
     if (this.oceanBossActive) this.updateOceanBoss(time);
-    else if (this.selection.mode === "ai") this.updateAi(time);
+    else if (this.isAiBattle()) this.updateAi(time);
 
     this.updateFighter(this.playerOne, this.playerTwo, time);
     if (!this.oceanBossActive) this.updateFighter(this.playerTwo, this.playerOne, time);
@@ -277,15 +292,8 @@ export class FightScene extends Phaser.Scene {
 
   private createFighter(config: FighterConfig, x: number, y: number, facing: 1 | -1, tag: string): RuntimeFighter {
     const sprite = this.physics.add.sprite(x, y, config.spriteKey);
-    if (config.id === "proposal-rock") {
-      sprite.setDisplaySize(230, 172);
-    } else if (config.id === "chelan") {
-      sprite.setDisplaySize(250, 150);
-    } else if (config.id === "ocean") {
-      sprite.setDisplaySize(230, 150);
-    } else {
-      sprite.setDisplaySize(150, 190);
-    }
+    const displaySize = this.getFighterDisplaySize(config);
+    sprite.setDisplaySize(displaySize.width, displaySize.height);
     sprite.setCollideWorldBounds(true);
     sprite.setDragX(1600);
     sprite.setMaxVelocity(430, 980);
@@ -334,7 +342,6 @@ export class FightScene extends Phaser.Scene {
       baseScaleY: sprite.scaleY,
       health: config.maxHealth,
       shield: config.maxShield,
-      specialCharge: 0,
       shieldRechargePausedUntil: 0,
       rounds: 0,
       facing,
@@ -352,6 +359,13 @@ export class FightScene extends Phaser.Scene {
     sprite.setBodySize(width / sprite.scaleX, height / sprite.scaleY, true);
   }
 
+  private getFighterDisplaySize(config: FighterConfig) {
+    if (config.id === "proposal-rock") return { width: 230, height: 172 };
+    if (config.id === "chelan") return { width: 250, height: 150 };
+    if (config.id === "ocean") return { width: 230, height: 150 };
+    return { width: 150, height: 190 };
+  }
+
   private getShieldVisualSize(config: FighterConfig) {
     if (config.id === "proposal-rock") return { width: 290, height: 230 };
     if (config.id === "chelan") return { width: 305, height: 210 };
@@ -365,8 +379,6 @@ export class FightScene extends Phaser.Scene {
     this.add.rectangle(width - 256, 39, 432, 24, 0x071210, 0.9).setStrokeStyle(2, 0xe8c66b);
     this.add.rectangle(256, 62, 432, 13, 0x071210, 0.82).setStrokeStyle(1, 0x7ee8ff, 0.72);
     this.add.rectangle(width - 256, 62, 432, 13, 0x071210, 0.82).setStrokeStyle(1, 0x7ee8ff, 0.72);
-    this.add.rectangle(256, 78, 432, 13, 0x071210, 0.82).setStrokeStyle(1, 0xffef7d, 0.72);
-    this.add.rectangle(width - 256, 78, 432, 13, 0x071210, 0.82).setStrokeStyle(1, 0xffef7d, 0.72);
     this.healthBars = [
       this.add.rectangle(40, 39, 420, 16, 0x56c271).setOrigin(0, 0.5),
       this.add.rectangle(width - 40, 39, 420, 16, 0x56c271).setOrigin(1, 0.5),
@@ -375,10 +387,8 @@ export class FightScene extends Phaser.Scene {
       this.add.rectangle(40, 62, 420, 7, 0x7ee8ff).setOrigin(0, 0.5),
       this.add.rectangle(width - 40, 62, 420, 7, 0x7ee8ff).setOrigin(1, 0.5),
     ];
-    this.specialBars = [
-      this.add.rectangle(40, 78, 420, 7, 0xffb84d).setOrigin(0, 0.5),
-      this.add.rectangle(width - 40, 78, 420, 7, 0xffb84d).setOrigin(1, 0.5),
-    ];
+    this.createAbilityCooldownHud(this.playerOne, 44, 82, 1);
+    this.createAbilityCooldownHud(this.playerTwo, width - 44, 82, -1);
     this.timerText = this.add
       .text(width / 2, 36, "60", {
         fontFamily: "system-ui, sans-serif",
@@ -397,10 +407,33 @@ export class FightScene extends Phaser.Scene {
       .setOrigin(0.5);
   }
 
+  private createAbilityCooldownHud(actor: RuntimeFighter, startX: number, y: number, direction: 1 | -1) {
+    const radius = 22;
+    COOLDOWN_HUD_ATTACK_KINDS.forEach((kind, index) => {
+      const x = startX + direction * index * 54;
+      const slot = this.add.circle(x, y, radius, kind === "special" ? 0xffb84d : kind === "heavy" ? 0xf2d37a : 0xdbe9df, 0.94).setStrokeStyle(3, 0x102421, 0.95);
+      slot.setScrollFactor(0);
+      this.createTouchButtonIcon(x, y, kind, actor.config.id).setScale(0.58).setScrollFactor(0);
+      const overlay = this.add.graphics().setScrollFactor(0);
+      const text = this.add
+        .text(x, y, "", {
+          fontFamily: "system-ui, sans-serif",
+          fontSize: "17px",
+          color: "#fff7e6",
+          fontStyle: "900",
+          stroke: "#102421",
+          strokeThickness: 4,
+        })
+        .setOrigin(0.5)
+        .setScrollFactor(0);
+      this.abilityCooldownViews.push({ actor, kind, overlay, text });
+    });
+  }
+
   private createOnlineHud() {
     if (!this.isOnlineHost() && !this.isOnlineGuest()) return;
     const roomCode = onlineSession.roomCode || this.selection.roomCode || "----";
-    const label = this.isOnlineHost() ? `Online host room ${roomCode}` : `Online Player 2 room ${roomCode}`;
+    const label = this.isOnlineHost() ? `Online host room ${roomCode}` : `Online remote room ${roomCode}`;
     this.onlineStatusText = this.add
       .text(this.scale.width / 2, 116, label, {
         fontFamily: "system-ui, sans-serif",
@@ -514,7 +547,7 @@ export class FightScene extends Phaser.Scene {
         .setOrigin(0.5);
     } else if (this.isOnlineGuest()) {
       this.add
-        .text(width / 2, height - 26, "You are Player 2 on this device", {
+        .text(width / 2, height - 26, "Remote controls connected for this match", {
           fontFamily: "system-ui, sans-serif",
           fontSize: "18px",
           color: "#fff7e6",
@@ -590,9 +623,24 @@ export class FightScene extends Phaser.Scene {
     button.on("pointerout", release);
 
     captionText.setInteractive({ useHandCursor: true });
+    if (isAttack) {
+      const overlay = this.add.graphics().setScrollFactor(0);
+      const cooldownText = this.add
+        .text(x, y, "", {
+          fontFamily: "system-ui, sans-serif",
+          fontSize: "21px",
+          color: "#fff7e6",
+          fontStyle: "900",
+          stroke: "#102421",
+          strokeThickness: 5,
+        })
+        .setOrigin(0.5)
+        .setScrollFactor(0);
+      this.touchCooldownViews.push({ kind: action as AttackKind, overlay, text: cooldownText });
+    }
   }
 
-  private createTouchButtonIcon(x: number, y: number, action: ControlAction) {
+  private createTouchButtonIcon(x: number, y: number, action: ControlAction, fighterId = this.playerOne.config.id) {
     const icon = this.add.graphics().setScrollFactor(0);
     icon.setPosition(x, y);
     if (action === "block") {
@@ -605,7 +653,6 @@ export class FightScene extends Phaser.Scene {
     }
 
     const kind = action as AttackKind;
-    const fighterId = this.playerOne.config.id;
     icon.lineStyle(4, 0x102421, 1);
     icon.fillStyle(0x102421, 1);
 
@@ -750,14 +797,12 @@ export class FightScene extends Phaser.Scene {
     this.playerTwo.health = this.playerTwo.config.maxHealth;
     this.playerOne.shield = this.playerOne.config.maxShield;
     this.playerTwo.shield = this.playerTwo.config.maxShield;
-    this.playerOne.specialCharge = 0;
-    this.playerTwo.specialCharge = 0;
     this.playerOne.shieldRechargePausedUntil = 0;
     this.playerTwo.shieldRechargePausedUntil = 0;
-    this.playerOne.sprite.setPosition(this.oceanBossActive ? 290 : 260, this.fighterSpawnY(height)).setVelocity(0, 0);
+    this.playerOne.sprite.setPosition(this.oceanBossActive ? 290 : 260, this.fighterSpawnY(height, this.playerOne.config)).setVelocity(0, 0);
     this.playerOne.sprite.setAlpha(1).setScale(this.playerOne.baseScaleX, this.playerOne.baseScaleY);
     (this.playerOne.sprite.body as Phaser.Physics.Arcade.Body).setAllowGravity(true);
-    this.playerTwo.sprite.setPosition(this.oceanBossActive ? width / 2 : width - 260, this.fighterSpawnY(height)).setVelocity(0, 0);
+    this.playerTwo.sprite.setPosition(this.oceanBossActive ? width / 2 : width - 260, this.fighterSpawnY(height, this.playerTwo.config)).setVelocity(0, 0);
     this.playerOne.facing = 1;
     this.playerTwo.facing = -1;
     this.playerOne.cooldowns = { light: 0, heavy: 0, special: 0 };
@@ -835,7 +880,7 @@ export class FightScene extends Phaser.Scene {
 
   private updateOceanBossTarget() {
     const { width, height } = this.scale;
-    this.playerTwo.sprite.setPosition(width / 2, this.fighterSpawnY(height));
+    this.playerTwo.sprite.setPosition(width / 2, this.fighterSpawnY(height, this.playerTwo.config));
     this.playerTwo.sprite.setVelocity(0, 0);
     this.playerTwo.facing = this.playerOne.sprite.x <= width / 2 ? -1 : 1;
     this.playerTwo.isBlocking = false;
@@ -926,7 +971,6 @@ export class FightScene extends Phaser.Scene {
 
   private hitPlayerWithOceanWave(wave: OceanWave) {
     const shielded = this.absorbDamageWithShield(this.playerOne, wave.damage);
-    if (shielded) this.addSpecialCharge(this.playerOne, SPECIAL_CHARGE_ON_BLOCK);
     const pushDirection = this.playerOne.sprite.x < wave.body.x ? -1 : 1;
     this.playerOne.sprite.setVelocityX(pushDirection * wave.knockback * (shielded ? 0.34 : 1));
     this.playerOne.sprite.setVelocityY(shielded ? -80 : -220);
@@ -1002,11 +1046,6 @@ export class FightScene extends Phaser.Scene {
 
   private tryAttack(actor: RuntimeFighter, kind: AttackKind, time: number) {
     if (actor.attack || actor.cooldowns[kind] > time || actor.isBlocking) return;
-    if (kind === "special" && actor.specialCharge < SPECIAL_CHARGE_MAX) {
-      actor.cooldowns.special = time + 220;
-      this.flashMoveLabel(actor.sprite.x, actor.sprite.y - 136, "CHARGE");
-      return;
-    }
     const attack = actor.config.attacks[kind];
     const isProposalSlam = actor.config.id === "proposal-rock" && kind === "special";
     const isProposalMine = actor.config.id === "proposal-rock" && kind === "heavy";
@@ -1014,7 +1053,6 @@ export class FightScene extends Phaser.Scene {
     actor.attack = isProposalSlam
       ? { kind, startedAt: time, hit: false, slam: { launched: false, impacted: false } }
       : { kind, startedAt: time, hit: false };
-    if (kind === "special") actor.specialCharge = 0;
     actor.cooldowns[kind] = time + attack.cooldown;
     if (isProposalSlam) {
       actor.sprite.setVelocity(actor.facing * 390, -760);
@@ -1077,8 +1115,6 @@ export class FightScene extends Phaser.Scene {
   private applyDamage(target: RuntimeFighter, attacker: RuntimeFighter, kind: AttackKind) {
     const attack = attacker.config.attacks[kind];
     const shielded = this.absorbDamageWithShield(target, attack.damage);
-    this.awardSpecialChargeForHit(attacker, kind);
-    if (shielded) this.addSpecialCharge(target, SPECIAL_CHARGE_ON_BLOCK);
     if (this.oceanBossActive && target === this.playerTwo) {
       this.createOceanSplash(target.sprite.x + attacker.facing * Phaser.Math.Between(24, 90), target.sprite.y - 70, kind === "special" ? "cross" : "breaker");
       this.flashMoveLabel(target.sprite.x, target.sprite.y - 158, kind === "special" ? "TIDE BROKEN" : "SPLASH");
@@ -1125,20 +1161,6 @@ export class FightScene extends Phaser.Scene {
       ease: "Quad.Out",
       onComplete: () => burst.destroy(),
     });
-  }
-
-  private awardSpecialChargeForHit(attacker: RuntimeFighter, kind: AttackKind) {
-    if (kind === "special") return;
-    this.addSpecialCharge(attacker, SPECIAL_CHARGE_ON_HIT[kind]);
-  }
-
-  private addSpecialCharge(actor: RuntimeFighter, amount: number) {
-    if (amount <= 0 || actor.specialCharge >= SPECIAL_CHARGE_MAX) return;
-    const previousCharge = actor.specialCharge;
-    actor.specialCharge = Math.min(SPECIAL_CHARGE_MAX, actor.specialCharge + amount);
-    if (previousCharge < SPECIAL_CHARGE_MAX && actor.specialCharge >= SPECIAL_CHARGE_MAX) {
-      this.flashMoveLabel(actor.sprite.x, actor.sprite.y - 154, "SPECIAL READY");
-    }
   }
 
   private spawnStarfishMine(actor: RuntimeFighter, time: number) {
@@ -1191,8 +1213,6 @@ export class FightScene extends Phaser.Scene {
       if (armed && xDistance <= mine.radius && yDistance <= 76) {
         mine.triggered = true;
         const shielded = this.absorbDamageWithShield(target, mine.damage);
-        this.awardSpecialChargeForHit(mine.owner, "heavy");
-        if (shielded) this.addSpecialCharge(target, SPECIAL_CHARGE_ON_BLOCK);
         const pushDirection = target.sprite.x < mine.object.x ? -1 : 1;
         target.sprite.setVelocityX(pushDirection * mine.knockback * (shielded ? 0.34 : 1));
         target.sprite.setVelocityY(shielded ? -190 : -330);
@@ -1319,7 +1339,6 @@ export class FightScene extends Phaser.Scene {
       if (xDistance <= projectile.radius && yDistance <= projectile.radius + 58) {
         projectile.hit = true;
         const shielded = this.absorbDamageWithShield(target, projectile.damage);
-        if (shielded) this.addSpecialCharge(target, SPECIAL_CHARGE_ON_BLOCK);
         target.sprite.setVelocityX(Math.sign(projectile.velocityX) * projectile.knockback * (shielded ? 0.35 : 1));
         target.sprite.setVelocityY(shielded ? -90 : -250);
         this.createProjectilePop(projectile.object.x, projectile.object.y, projectile.kind);
@@ -1473,7 +1492,7 @@ export class FightScene extends Phaser.Scene {
     const aggression = this.playerTwo.config.aiProfile === "aggressive" ? 0.78 : 0.58;
     if (absDistance < 96 && Math.random() < aggression) plan.light = true;
     else if (absDistance < 126 && Math.random() < 0.48) plan.heavy = true;
-    else if (absDistance < 188 && this.playerTwo.specialCharge >= SPECIAL_CHARGE_MAX && Math.random() < 0.36) plan.special = true;
+    else if (absDistance < 188 && this.playerTwo.cooldowns.special <= time && Math.random() < 0.36) plan.special = true;
     if (this.playerOne.attack && Math.random() < (this.playerTwo.config.aiProfile === "defensive" ? 0.7 : 0.38)) plan.block = true;
     if (Math.random() < 0.08) plan.up = true;
 
@@ -1510,7 +1529,7 @@ export class FightScene extends Phaser.Scene {
       velocityY: body.velocity.y,
       health: actor.health,
       shield: actor.shield,
-      specialCharge: actor.specialCharge,
+      cooldowns: actor.cooldowns,
       rounds: actor.rounds,
       facing: actor.facing,
       isBlocking: actor.isBlocking,
@@ -1535,7 +1554,7 @@ export class FightScene extends Phaser.Scene {
   private applyFighterNetState(actor: RuntimeFighter, state: MatchNetState["playerOne"]) {
     actor.health = state.health;
     actor.shield = state.shield;
-    actor.specialCharge = state.specialCharge;
+    actor.cooldowns = state.cooldowns;
     actor.rounds = state.rounds;
     actor.facing = state.facing;
     actor.isBlocking = state.isBlocking;
@@ -1554,21 +1573,58 @@ export class FightScene extends Phaser.Scene {
       this.playerOne.config.maxShield > 0 ? Phaser.Math.Clamp(this.playerOne.shield / this.playerOne.config.maxShield, 0, 1) : 0;
     const p2ShieldRatio =
       this.playerTwo.config.maxShield > 0 ? Phaser.Math.Clamp(this.playerTwo.shield / this.playerTwo.config.maxShield, 0, 1) : 0;
-    const p1SpecialRatio = Phaser.Math.Clamp(this.playerOne.specialCharge / SPECIAL_CHARGE_MAX, 0, 1);
-    const p2SpecialRatio = Phaser.Math.Clamp(this.playerTwo.specialCharge / SPECIAL_CHARGE_MAX, 0, 1);
     this.healthBars[0].displayWidth = 420 * p1Ratio;
     this.healthBars[1].displayWidth = 420 * p2Ratio;
     this.shieldBars[0].displayWidth = 420 * p1ShieldRatio;
     this.shieldBars[1].displayWidth = 420 * p2ShieldRatio;
-    this.specialBars[0].displayWidth = 420 * p1SpecialRatio;
-    this.specialBars[1].displayWidth = 420 * p2SpecialRatio;
     this.shieldBars[0].setFillStyle(this.playerOne.isBlocking ? 0xcaf8ff : 0x7ee8ff);
     this.shieldBars[1].setFillStyle(this.playerTwo.isBlocking ? 0xcaf8ff : 0x7ee8ff);
-    this.specialBars[0].setFillStyle(p1SpecialRatio >= 1 ? 0xffef7d : 0xffb84d);
-    this.specialBars[1].setFillStyle(p2SpecialRatio >= 1 ? 0xffef7d : 0xffb84d);
+    this.updateAbilityCooldownViews(time);
+    this.updateTouchCooldownViews(time);
     const remaining = Math.max(0, this.roundTime - Math.floor((time - this.roundStartedAt) / 1000));
     this.timerText?.setText(String(remaining));
     this.roundText?.setText(`Round ${this.roundNumber}    ${this.playerOne.rounds}-${this.playerTwo.rounds}`);
+  }
+
+  private updateAbilityCooldownViews(time: number) {
+    for (const view of this.abilityCooldownViews) {
+      const radius = 22;
+      const ratio = this.getCooldownRemainingRatio(view.actor, view.kind, time);
+      this.drawCooldownMask(view.overlay, view.text.x, view.text.y, radius, ratio);
+      this.updateCooldownText(view.text, view.actor, view.kind, time);
+    }
+  }
+
+  private updateTouchCooldownViews(time: number) {
+    for (const view of this.touchCooldownViews) {
+      const ratio = this.getCooldownRemainingRatio(this.playerOne, view.kind, time);
+      this.drawCooldownMask(view.overlay, view.text.x, view.text.y, 39, ratio);
+      this.updateCooldownText(view.text, this.playerOne, view.kind, time);
+    }
+  }
+
+  private getCooldownRemainingRatio(actor: RuntimeFighter, kind: AttackKind, time: number) {
+    const cooldown = actor.config.attacks[kind].cooldown;
+    const remaining = Math.max(0, actor.cooldowns[kind] - time);
+    return cooldown > 0 ? Phaser.Math.Clamp(remaining / cooldown, 0, 1) : 0;
+  }
+
+  private updateCooldownText(text: Phaser.GameObjects.Text, actor: RuntimeFighter, kind: AttackKind, time: number) {
+    const remaining = Math.max(0, actor.cooldowns[kind] - time);
+    text.setText(remaining > 0 ? Math.ceil(remaining / 1000).toFixed(0) : "");
+  }
+
+  private drawCooldownMask(graphics: Phaser.GameObjects.Graphics, x: number, y: number, radius: number, ratio: number) {
+    graphics.clear();
+    if (ratio <= 0) return;
+    graphics.fillStyle(0x071210, 0.68);
+    graphics.beginPath();
+    graphics.moveTo(x, y);
+    graphics.slice(x, y, radius, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * ratio, false);
+    graphics.closePath();
+    graphics.fillPath();
+    graphics.lineStyle(2, 0xffef7d, 0.72);
+    graphics.strokeCircle(x, y, radius - 1);
   }
 
   private finishRound() {
@@ -1596,6 +1652,9 @@ export class FightScene extends Phaser.Scene {
           winnerId: winner.config.id,
           mode: this.selection.mode,
           levelId: this.selection.levelId,
+          playerOneId: this.selection.playerOneId,
+          playerTwoId: this.selection.playerTwoId,
+          campaignLevelId: this.selection.campaignLevelId,
         };
         if (this.isOnlineHost()) {
           onlineSession.sendMatchResult({ ...result, mode: "online-guest" });
@@ -1606,5 +1665,9 @@ export class FightScene extends Phaser.Scene {
       this.roundNumber += 1;
       this.startRound();
     });
+  }
+
+  private isAiBattle() {
+    return this.selection.mode === "ai" || this.selection.mode === "campaign";
   }
 }

@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import { isFighterUnlocked, STARTING_FIGHTER_ID } from "../campaign";
 import { fighters } from "../fighters";
 import { onlineSession } from "../online";
 import type { GameMode } from "../types";
@@ -20,7 +21,7 @@ export class CharacterSelectScene extends Phaser.Scene {
 
   init(data: CharacterSelectData) {
     this.mode = data.mode ?? "ai";
-    this.playerOneIndex = Math.max(0, fighters.findIndex((fighter) => fighter.id === data.playerOneId));
+    this.playerOneIndex = this.getUnlockedIndex(data.playerOneId ?? STARTING_FIGHTER_ID);
     this.playerTwoIndex = Math.max(0, fighters.findIndex((fighter) => fighter.id === data.playerTwoId));
     if (this.playerTwoIndex === this.playerOneIndex) this.playerTwoIndex = (this.playerOneIndex + 1) % fighters.length;
   }
@@ -48,7 +49,7 @@ export class CharacterSelectScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     this.addFighterPanel(width * 0.28, 328, "P1", this.playerOneIndex, -1, 0xe43f2e);
-    this.addFighterPanel(width * 0.72, 328, this.mode === "ai" ? "AI" : "P2", this.playerTwoIndex, 1, 0x1976d2);
+    this.addFighterPanel(width * 0.72, 328, this.mode === "ai" || this.mode === "campaign" ? "AI" : "P2", this.playerTwoIndex, 1, 0x1976d2);
     this.addRoster(width / 2, height - 142);
 
     this.addButton(width / 2, height - 54, "Choose Level", () => {
@@ -114,19 +115,21 @@ export class CharacterSelectScene extends Phaser.Scene {
     fighters.forEach((fighter, index) => {
       const isP1 = index === this.playerOneIndex;
       const isP2 = index === this.playerTwoIndex;
+      const unlocked = isFighterUnlocked(fighter.id);
       const tileX = startX + index * spacing;
       const stroke = isP1 ? 0xe43f2e : isP2 ? 0x1976d2 : 0xf7f2e6;
-      const bg = this.add.rectangle(tileX, y, 86, 86, 0x101820, 0.9).setStrokeStyle(isP1 || isP2 ? 5 : 2, stroke);
-      this.add.image(tileX, y - 8, fighter.spriteKey).setDisplaySize(68, 54);
+      const bg = this.add.rectangle(tileX, y, 86, 86, unlocked ? 0x101820 : 0x313a36, 0.9).setStrokeStyle(isP1 || isP2 ? 5 : 2, stroke);
+      this.add.image(tileX, y - 8, fighter.spriteKey).setDisplaySize(68, 54).setAlpha(unlocked ? 1 : 0.34);
       this.add
-        .text(tileX, y + 32, isP1 ? "P1" : isP2 ? (this.mode === "ai" ? "AI" : "P2") : fighter.displayName.split(" ")[0], {
+        .text(tileX, y + 32, isP1 ? "P1" : isP2 ? (this.mode === "ai" || this.mode === "campaign" ? "AI" : "P2") : unlocked ? fighter.displayName.split(" ")[0] : "LOCK", {
           fontFamily: "system-ui, sans-serif",
           fontSize: "13px",
           color: "#fff7e6",
           fontStyle: "900",
         })
         .setOrigin(0.5);
-      bg.setInteractive({ useHandCursor: true }).on("pointerdown", () => {
+      bg.setInteractive({ useHandCursor: unlocked }).on("pointerdown", () => {
+        if (!unlocked) return;
         this.playerOneIndex = index;
         if (this.playerTwoIndex === this.playerOneIndex) this.playerTwoIndex = (index + 1) % fighters.length;
         this.render();
@@ -151,13 +154,29 @@ export class CharacterSelectScene extends Phaser.Scene {
   private changeSelection(side: -1 | 1, delta: number) {
     const next = (current: number) => (current + delta + fighters.length) % fighters.length;
     if (side === -1) {
-      this.playerOneIndex = next(this.playerOneIndex);
+      this.playerOneIndex = this.nextUnlockedIndex(this.playerOneIndex, delta);
       if (this.playerOneIndex === this.playerTwoIndex) this.playerTwoIndex = next(this.playerTwoIndex);
     } else {
       this.playerTwoIndex = next(this.playerTwoIndex);
       if (this.playerTwoIndex === this.playerOneIndex) this.playerTwoIndex = next(this.playerTwoIndex);
     }
     this.render();
+  }
+
+  private getUnlockedIndex(preferredId: string) {
+    const preferredIndex = fighters.findIndex((fighter) => fighter.id === preferredId && isFighterUnlocked(fighter.id));
+    if (preferredIndex >= 0) return preferredIndex;
+    const fallbackIndex = fighters.findIndex((fighter) => fighter.id === STARTING_FIGHTER_ID);
+    return Math.max(0, fallbackIndex);
+  }
+
+  private nextUnlockedIndex(currentIndex: number, delta: number) {
+    let nextIndex = currentIndex;
+    for (let step = 0; step < fighters.length; step += 1) {
+      nextIndex = (nextIndex + delta + fighters.length) % fighters.length;
+      if (isFighterUnlocked(fighters[nextIndex].id)) return nextIndex;
+    }
+    return this.getUnlockedIndex(STARTING_FIGHTER_ID);
   }
 
   private addArrowButton(x: number, y: number, label: string, onClick: () => void) {
