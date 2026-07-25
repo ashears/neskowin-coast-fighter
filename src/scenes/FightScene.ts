@@ -21,6 +21,16 @@ type AttackState = {
     chargeRatio: number;
     direction: 1 | -1;
   };
+  chelanSlam?: {
+    direction: 1 | -1;
+    grabbed: boolean;
+    grabbedAt: number;
+    slammed: boolean;
+    cutscene?: Phaser.GameObjects.Container;
+  };
+  ripRapSpikes?: {
+    erupted: boolean;
+  };
 };
 type BeachProjectileKind = "beachBall" | "shovel" | "fish" | "chair" | "towel" | "person";
 type OceanWaveKind = "breaker" | "cross" | "sneaker";
@@ -95,6 +105,16 @@ interface StarfishMine {
   triggered: boolean;
 }
 
+interface RollingRock {
+  object: Phaser.GameObjects.Container;
+  owner: RuntimeFighter;
+  damage: number;
+  knockback: number;
+  radius: number;
+  velocityX: number;
+  hitActors: Set<RuntimeFighter>;
+}
+
 interface RuntimeFighter {
   config: FighterConfig;
   sprite: Phaser.Physics.Arcade.Sprite;
@@ -141,6 +161,14 @@ const DEFAULT_FIGHTER_MAX_VELOCITY_X = 430;
 const DEFAULT_FIGHTER_MAX_VELOCITY_Y = 980;
 const GROUND_HEIGHT = 34;
 const FIGHTER_FOOT_INSET = GROUND_HEIGHT / 2;
+const FIGHTER_STACK_MIN_OVERLAP_X = 18;
+const FIGHTER_STACK_CONTACT_TOLERANCE = 42;
+const FIGHTER_STACK_SEPARATION = 14;
+const FIGHTER_STACK_MAX_POSITION_PUSH = 64;
+const FIGHTER_STACK_LOWER_PUSH_SPEED = 540;
+const FIGHTER_STACK_UPPER_DRIFT_SPEED = 150;
+const FIGHTER_STACK_DOWNWARD_VELOCITY = 190;
+const CHELAN_SLAM_CUTSCENE_MS = 920;
 
 export class FightScene extends Phaser.Scene {
   private selection!: MatchSelection;
@@ -161,6 +189,7 @@ export class FightScene extends Phaser.Scene {
   private roundNumber = 1;
   private projectiles: BeachProjectile[] = [];
   private starfishMines: StarfishMine[] = [];
+  private rollingRocks: RollingRock[] = [];
   private oceanBossActive = false;
   private oceanBossSprite?: Phaser.GameObjects.Image;
   private oceanBossFoam?: Phaser.GameObjects.Ellipse;
@@ -399,11 +428,13 @@ export class FightScene extends Phaser.Scene {
     if (!this.proposalRockBossActive) this.updateFighter(this.playerOne, this.playerTwo, time);
     if (!this.oceanBossActive && !this.proposalRockBossActive) this.updateFighter(this.playerTwo, this.playerOne, time);
     else this.updateOceanBossTarget();
+    this.resolveFighterStacking();
     this.rechargeShields(time);
     if (!this.proposalRockBossActive) this.resolveAttacks(this.playerOne, this.playerTwo, time);
     if (!this.oceanBossActive && !this.proposalRockBossActive) this.resolveAttacks(this.playerTwo, this.playerOne, time);
     this.updateProjectiles(time);
     this.updateStarfishMines(time);
+    this.updateRollingRocks(time);
     this.clampActiveFightersToArena();
     this.updateHud(time);
     if (this.isOnlineHost() && time - this.lastOnlineStateAt >= 50) {
@@ -839,8 +870,11 @@ export class FightScene extends Phaser.Scene {
         icon.strokeLineShape(new Phaser.Geom.Line(0, -17, 0, 17));
         break;
       case "chelan:special":
-        icon.fillStyle(0x102421, 1);
-        icon.fillPoints([new Phaser.Math.Vector2(4, -24), new Phaser.Math.Vector2(-10, -1), new Phaser.Math.Vector2(3, -1), new Phaser.Math.Vector2(-5, 24), new Phaser.Math.Vector2(16, -7), new Phaser.Math.Vector2(2, -7)], true);
+        icon.fillStyle(0xffef7d, 1);
+        icon.fillPoints(this.makeStarPoints(0, -2, 5, 8, 22), true);
+        icon.lineStyle(3, 0x102421, 1);
+        icon.strokePoints(this.makeStarPoints(0, -2, 5, 8, 22), true);
+        icon.strokeLineShape(new Phaser.Geom.Line(-18, 20, 18, 20));
         break;
       case "ocean:light":
         icon.fillCircle(0, 6, 13);
@@ -861,13 +895,15 @@ export class FightScene extends Phaser.Scene {
         icon.fillTriangle(2, 16, 16, -8, 23, 16);
         break;
       case "rip-rap:heavy":
-        icon.fillCircle(-11, 5, 10);
-        icon.fillCircle(6, -5, 14);
-        icon.fillCircle(16, 10, 8);
+        icon.fillTriangle(-19, 17, -7, -19, 4, 17);
+        icon.fillTriangle(-2, 17, 9, -24, 21, 17);
+        icon.strokeLineShape(new Phaser.Geom.Line(-23, 18, 23, 18));
         break;
       case "rip-rap:special":
-        icon.strokeCircle(0, 0, 19);
-        icon.fillTriangle(0, -18, 12, 10, -12, 10);
+        icon.fillCircle(0, 1, 18);
+        icon.lineStyle(3, 0xdbe9df, 1);
+        icon.strokeLineShape(new Phaser.Geom.Line(-12, -3, 11, 8));
+        icon.strokeLineShape(new Phaser.Geom.Line(-2, -14, 13, -4));
         break;
       case "the-house:light":
         icon.strokeRect(-17, -9, 34, 24);
@@ -969,14 +1005,16 @@ export class FightScene extends Phaser.Scene {
     this.clearControls(this.playerTwo.keyboardControls);
     this.clearControls(this.playerTwo.touchControls);
     this.clearControls(this.playerTwo.controls);
-    this.playerOne.attack = undefined;
-    this.playerTwo.attack = undefined;
+    this.clearActiveAttack(this.playerOne);
+    this.clearActiveAttack(this.playerTwo);
     this.updateShieldVisual(this.playerOne);
     this.updateShieldVisual(this.playerTwo);
     this.projectiles.forEach((projectile) => projectile.object.destroy());
     this.projectiles = [];
     this.starfishMines.forEach((mine) => mine.object.destroy());
     this.starfishMines = [];
+    this.rollingRocks.forEach((rock) => rock.object.destroy());
+    this.rollingRocks = [];
     this.oceanWaves.forEach((wave) => this.destroyOceanWave(wave));
     this.oceanWaves = [];
     this.nextOceanWaveAt = this.time.now + 900;
@@ -1386,7 +1424,10 @@ export class FightScene extends Phaser.Scene {
     const isProposalSlam = actor.config.id === "proposal-rock" && kind === "heavy";
     const isProposalMine = actor.config.id === "proposal-rock" && kind === "light";
     const isProposalSpinCharge = actor.config.id === "proposal-rock" && kind === "special";
-    const isChelanZap = actor.config.id === "chelan" && kind === "special";
+    const isChelanBeachThrow = actor.config.id === "chelan" && kind === "heavy";
+    const isChelanSlam = actor.config.id === "chelan" && kind === "special";
+    const isRipRapTopSpikes = actor.config.id === "rip-rap" && kind === "heavy";
+    const isRipRapRollingRock = actor.config.id === "rip-rap" && kind === "special";
     actor.attack = isProposalSlam
       ? { kind, startedAt: time, hit: false, slam: { launched: false, impacted: false } }
       : isProposalSpinCharge
@@ -1402,7 +1443,21 @@ export class FightScene extends Phaser.Scene {
               direction: actor.facing,
             },
           }
-        : { kind, startedAt: time, hit: false };
+        : isChelanSlam
+          ? {
+              kind,
+              startedAt: time,
+              hit: false,
+              chelanSlam: {
+                direction: actor.facing,
+                grabbed: false,
+                grabbedAt: 0,
+                slammed: false,
+              },
+            }
+          : isRipRapTopSpikes
+            ? { kind, startedAt: time, hit: false, ripRapSpikes: { erupted: false } }
+            : { kind, startedAt: time, hit: false };
     actor.cooldowns[kind] = time + attack.cooldown;
     if (isProposalSlam) {
       actor.sprite.setVelocity(actor.facing * 390, -760);
@@ -1428,12 +1483,37 @@ export class FightScene extends Phaser.Scene {
       this.flashMoveLabel(actor.sprite.x, actor.sprite.y - 138, "CHARGE");
       return;
     }
-    if (isChelanZap) {
+    if (isChelanBeachThrow) {
       actor.attack.hit = true;
       actor.sprite.setVelocityX(-actor.facing * 65);
-      this.spawnChelanZap(actor, time);
+      this.spawnChelanBeachThrow(actor, time);
       this.time.delayedCall(120, () => {
-        if (actor.attack?.kind === "special" && actor.config.id === "chelan") actor.attack = undefined;
+        if (actor.attack?.kind === "heavy" && actor.config.id === "chelan") actor.attack = undefined;
+      });
+      return;
+    }
+    if (isChelanSlam) {
+      actor.sprite.setVelocityX(actor.facing * 360);
+      actor.sprite.setTint(0xffef7d);
+      this.flashMoveLabel(actor.sprite.x, actor.sprite.y - 138, "SHOWTIME");
+      this.cameras.main.shake(70, 0.004);
+      return;
+    }
+    if (isRipRapTopSpikes) {
+      actor.sprite.setVelocityX(0);
+      actor.sprite.setTint(0xd9ded1);
+      actor.sprite.setScale(actor.baseScaleX * 1.08, actor.baseScaleY * 0.95);
+      this.flashMoveLabel(actor.sprite.x, actor.sprite.y - 142, "SPIKE CROWN");
+      return;
+    }
+    if (isRipRapRollingRock) {
+      actor.attack.hit = true;
+      actor.sprite.setVelocityX(-actor.facing * 70);
+      actor.sprite.setTint(0xd9ded1);
+      this.spawnRipRapRollingRock(actor);
+      this.flashMoveLabel(actor.sprite.x, actor.sprite.y - 138, "ROCK ROLL");
+      this.time.delayedCall(180, () => {
+        if (actor.attack?.kind === "special" && actor.config.id === "rip-rap") this.clearActiveAttack(actor);
       });
       return;
     }
@@ -1450,6 +1530,14 @@ export class FightScene extends Phaser.Scene {
       this.resolveProposalSpinCharge(actor, opponent, time);
       return;
     }
+    if (actor.attack.chelanSlam) {
+      this.resolveChelanSlam(actor, opponent, time);
+      return;
+    }
+    if (actor.attack.ripRapSpikes) {
+      this.resolveRipRapTopSpikes(actor, opponent, time);
+      return;
+    }
     const attack = actor.config.attacks[actor.attack.kind];
     const age = time - actor.attack.startedAt;
     const active = age >= attack.windup && age <= attack.windup + attack.active;
@@ -1461,9 +1549,20 @@ export class FightScene extends Phaser.Scene {
     }
 
     if (age > attack.windup + attack.active + 90) {
-      actor.attack = undefined;
+      this.clearActiveAttack(actor);
       actor.sprite.setAlpha(1);
     }
+  }
+
+  private clearActiveAttack(actor: RuntimeFighter) {
+    actor.attack?.chelanSlam?.cutscene?.destroy();
+    actor.attack = undefined;
+    actor.sprite.setAlpha(1);
+    actor.sprite.setScale(actor.baseScaleX, actor.baseScaleY);
+    actor.sprite.setRotation(0);
+    actor.sprite.setAngularVelocity(0);
+    actor.sprite.setMaxVelocity(DEFAULT_FIGHTER_MAX_VELOCITY_X, DEFAULT_FIGHTER_MAX_VELOCITY_Y);
+    actor.sprite.clearTint();
   }
 
   private inAttackRange(actor: RuntimeFighter, opponent: RuntimeFighter, range: number) {
@@ -1613,7 +1712,7 @@ export class FightScene extends Phaser.Scene {
     this.flashMoveLabel(x, y - 76, "TRAPPED");
   }
 
-  private spawnChelanZap(actor: RuntimeFighter, time: number) {
+  private spawnChelanBeachThrow(actor: RuntimeFighter, time: number) {
     const kind = this.pickBeachProjectileKind();
     const config = this.getBeachProjectileConfig(kind);
     const startX = actor.sprite.x + actor.facing * 110;
@@ -1637,16 +1736,6 @@ export class FightScene extends Phaser.Scene {
       hit: false,
     });
 
-    const zap = this.add.line(startX - actor.facing * 62, startY, 0, 0, actor.facing * 84, Phaser.Math.Between(-14, 14), 0x7ee8ff, 0.85);
-    zap.setLineWidth(5, 2);
-    this.tweens.add({
-      targets: zap,
-      alpha: 0,
-      scaleX: 1.45,
-      duration: 170,
-      ease: "Quad.Out",
-      onComplete: () => zap.destroy(),
-    });
     this.cameras.main.shake(kind === "person" ? 80 : 35, kind === "person" ? 0.006 : 0.0025);
   }
 
@@ -1729,6 +1818,298 @@ export class FightScene extends Phaser.Scene {
     this.cameras.main.shake(kind === "person" || kind === "chair" ? 95 : 55, kind === "person" ? 0.008 : 0.004);
   }
 
+  private resolveRipRapTopSpikes(actor: RuntimeFighter, opponent: RuntimeFighter, time: number) {
+    if (!actor.attack?.ripRapSpikes) return;
+    const state = actor.attack.ripRapSpikes;
+    const attack = actor.config.attacks.heavy;
+    const age = time - actor.attack.startedAt;
+    const pulse = 1 + Math.sin(age / 42) * 0.035;
+
+    actor.sprite.setVelocityX(0);
+    actor.sprite.setAlpha(0.92);
+    actor.sprite.setScale(actor.baseScaleX * (1.08 + pulse * 0.025), actor.baseScaleY * 0.94);
+
+    if (!state.erupted && age >= attack.windup) {
+      state.erupted = true;
+      actor.attack.hit = true;
+      this.createRipRapSpikeBurst(actor.sprite.x, actor.sprite.y - 94);
+      if (this.inRipRapSpikeRange(actor, opponent, attack.range)) {
+        this.applyDamage(opponent, actor, "heavy");
+        opponent.sprite.setVelocityY(-360);
+        this.flashMoveLabel(opponent.sprite.x, opponent.sprite.y - 138, "SPIKED");
+      }
+      this.cameras.main.shake(95, 0.006);
+    }
+
+    if (age > attack.windup + attack.active + 120) {
+      this.clearActiveAttack(actor);
+    }
+  }
+
+  private inRipRapSpikeRange(actor: RuntimeFighter, opponent: RuntimeFighter, range: number) {
+    const xDistance = Math.abs(actor.sprite.x - opponent.sprite.x);
+    const yDistance = Math.abs((actor.sprite.y - 78) - opponent.sprite.y);
+    return xDistance <= range && yDistance < 150;
+  }
+
+  private createRipRapSpikeBurst(x: number, y: number) {
+    const ring = this.add.ellipse(x, y + 72, 82, 18, 0xd9ded1, 0.3).setStrokeStyle(4, 0xffffff, 0.62).setDepth(14);
+    this.tweens.add({
+      targets: ring,
+      scaleX: 2.1,
+      alpha: 0,
+      duration: 260,
+      ease: "Quad.Out",
+      onComplete: () => ring.destroy(),
+    });
+
+    for (let index = 0; index < 9; index += 1) {
+      const offset = Phaser.Math.Linear(-78, 78, index / 8);
+      const height = Phaser.Math.Between(64, 116);
+      const spike = this.add
+        .triangle(x + offset, y + 64, 0, 0, 14, height, -14, height, 0xd9ded1, 0.98)
+        .setStrokeStyle(2, 0x3d453d, 0.95)
+        .setDepth(15)
+        .setAngle(Phaser.Math.Between(-12, 12));
+      this.tweens.add({
+        targets: spike,
+        y: y - Phaser.Math.Between(22, 54),
+        scaleX: 1.08,
+        scaleY: 1.2,
+        yoyo: true,
+        hold: 110,
+        duration: 135,
+        ease: "Back.Out",
+        onComplete: () => spike.destroy(),
+      });
+    }
+  }
+
+  private spawnRipRapRollingRock(actor: RuntimeFighter) {
+    const attack = actor.config.attacks.special;
+    const startX = actor.sprite.x + actor.facing * 92;
+    const floorY = this.fightFloorY(this.scale.height) - 32;
+    const core = this.add.circle(0, 0, 34, 0x5f665c, 0.98).setStrokeStyle(4, 0x2f362f, 1);
+    const chipA = this.add.circle(-10, -8, 8, 0x8e9689, 0.72);
+    const chipB = this.add.circle(12, 10, 6, 0x3f473f, 0.75);
+    const groove = this.add.rectangle(5, -2, 52, 5, 0x2f362f, 0.35).setAngle(-24);
+    const object = this.add.container(startX, floorY, [core, chipA, chipB, groove]).setDepth(8);
+
+    this.rollingRocks.push({
+      object,
+      owner: actor,
+      damage: attack.damage,
+      knockback: attack.knockback,
+      radius: attack.range,
+      velocityX: actor.facing * 175,
+      hitActors: new Set(),
+    });
+    this.cameras.main.shake(55, 0.0035);
+  }
+
+  private updateRollingRocks(time: number) {
+    const delta = this.game.loop.delta / 1000;
+    this.rollingRocks = this.rollingRocks.filter((rock) => {
+      rock.object.x += rock.velocityX * delta;
+      rock.object.rotation += (rock.velocityX > 0 ? 1 : -1) * delta * 4.4;
+      rock.object.y = this.fightFloorY(this.scale.height) - 32 + Math.sin(time / 78 + rock.object.x * 0.03) * 2;
+
+      const target = rock.owner === this.playerOne ? this.playerTwo : this.playerOne;
+      const targetBody = target.sprite.body as Phaser.Physics.Arcade.Body;
+      const xDistance = Math.abs(rock.object.x - targetBody.center.x);
+      const yDistance = Math.abs(rock.object.y - targetBody.center.y);
+
+      if (!rock.hitActors.has(target) && xDistance <= rock.radius && yDistance <= 126) {
+        rock.hitActors.add(target);
+        const shielded = this.absorbDamageWithShield(target, rock.damage);
+        target.sprite.setVelocityX(Math.sign(rock.velocityX) * rock.knockback * (shielded ? 0.34 : 1));
+        target.sprite.setVelocityY(shielded ? -100 : -260);
+        this.createRollingRockHit(rock.object.x, rock.object.y);
+        this.flashMoveLabel(target.sprite.x, target.sprite.y - 128, "BOWLED");
+      }
+
+      if (rock.object.x < -120 || rock.object.x > this.scale.width + 120) {
+        rock.object.destroy();
+        return false;
+      }
+      return true;
+    });
+  }
+
+  private createRollingRockHit(x: number, y: number) {
+    const burst = this.add.circle(x, y, 14, 0xd9ded1, 0.42).setStrokeStyle(4, 0xffffff, 0.66).setDepth(16);
+    this.tweens.add({
+      targets: burst,
+      radius: 62,
+      alpha: 0,
+      duration: 300,
+      ease: "Quad.Out",
+      onComplete: () => burst.destroy(),
+    });
+    for (let index = 0; index < 8; index += 1) {
+      const pebble = this.add.circle(x, y - 6, Phaser.Math.Between(3, 7), 0x5f665c, 0.9).setDepth(17);
+      this.tweens.add({
+        targets: pebble,
+        x: x + Phaser.Math.Between(-90, 90),
+        y: y - Phaser.Math.Between(18, 76),
+        alpha: 0,
+        duration: Phaser.Math.Between(240, 460),
+        ease: "Cubic.Out",
+        onComplete: () => pebble.destroy(),
+      });
+    }
+    this.cameras.main.shake(90, 0.006);
+  }
+
+  private resolveChelanSlam(actor: RuntimeFighter, opponent: RuntimeFighter, time: number) {
+    if (!actor.attack?.chelanSlam) return;
+    const state = actor.attack.chelanSlam;
+    const attack = actor.config.attacks.special;
+    const age = time - actor.attack.startedAt;
+    const direction = state.direction;
+
+    actor.sprite.setAlpha(0.95);
+    actor.sprite.setTint(0xffef7d);
+    actor.sprite.setVelocityX(state.grabbed ? 0 : direction * 360);
+
+    if (!state.grabbed) {
+      if (age >= attack.windup && this.inAttackRange(actor, opponent, attack.range)) {
+        state.grabbed = true;
+        state.grabbedAt = time;
+        actor.attack.hit = true;
+        actor.sprite.setVelocity(0, 0);
+        opponent.sprite.setVelocity(0, 0);
+        this.clearActiveAttack(opponent);
+        opponent.isBlocking = false;
+        state.cutscene = this.createChelanSlamCutscene(actor, opponent);
+        this.flashMoveLabel(actor.sprite.x, actor.sprite.y - 148, "CHELANMANIA");
+        this.cameras.main.flash(110, 255, 239, 125, false);
+        this.cameras.main.shake(130, 0.008);
+        return;
+      }
+
+      if (age > attack.windup + attack.active + 160) {
+        this.clearActiveAttack(actor);
+      }
+      return;
+    }
+
+    const grabAge = time - state.grabbedAt;
+    const centerX = Phaser.Math.Clamp((actor.sprite.x + opponent.sprite.x) / 2, 170, this.scale.width - 170);
+    const actorY = this.fighterSpawnY(this.scale.height, actor.config);
+    const opponentY = this.fighterSpawnY(this.scale.height, opponent.config);
+    const liftRatio = Phaser.Math.Clamp(grabAge / 360, 0, 1);
+    const slamRatio = Phaser.Math.Clamp((grabAge - 360) / 260, 0, 1);
+    const lift = Math.sin(liftRatio * Math.PI * 0.72) * 110;
+
+    actor.facing = direction;
+    opponent.facing = direction < 0 ? 1 : -1;
+    actor.sprite.setFlipX(direction === -1);
+    opponent.sprite.setFlipX(opponent.facing === -1);
+    actor.sprite.setPosition(centerX - direction * 60, actorY - lift * 0.16);
+    opponent.sprite.setPosition(centerX + direction * 54, opponentY - lift + slamRatio * 76);
+    opponent.sprite.setRotation(direction * Phaser.Math.DegToRad(Phaser.Math.Linear(-18, 245, Math.max(liftRatio, slamRatio))));
+    opponent.sprite.setAlpha(0.94 + Math.sin(grabAge / 38) * 0.05);
+    actor.sprite.setScale(actor.baseScaleX * (1.08 + Math.sin(grabAge / 45) * 0.025), actor.baseScaleY * 0.96);
+
+    if (!state.slammed && grabAge >= 620) {
+      state.slammed = true;
+      this.applyDamage(opponent, actor, "special");
+      opponent.sprite.setVelocityX(direction * attack.knockback);
+      opponent.sprite.setVelocityY(-410);
+      this.createChelanSlamImpact(centerX + direction * 64, opponentY + 72, direction);
+      this.flashMoveLabel(centerX, opponentY - 138, "RING BREAKER");
+    }
+
+    if (grabAge >= CHELAN_SLAM_CUTSCENE_MS) {
+      this.finishChelanSlam(actor, opponent);
+    }
+  }
+
+  private finishChelanSlam(actor: RuntimeFighter, opponent: RuntimeFighter) {
+    this.clearActiveAttack(actor);
+    opponent.sprite.setAlpha(1);
+    opponent.sprite.setScale(opponent.baseScaleX, opponent.baseScaleY);
+    opponent.sprite.setRotation(0);
+    opponent.sprite.clearTint();
+    this.clampFighterToArena(actor);
+    this.clampFighterToArena(opponent);
+  }
+
+  private createChelanSlamCutscene(actor: RuntimeFighter, opponent: RuntimeFighter) {
+    const { width, height } = this.scale;
+    const shade = this.add.rectangle(width / 2, height / 2, width, height, 0x071210, 0.46);
+    const topBar = this.add.rectangle(width / 2, 58, width, 116, 0x071210, 0.94);
+    const bottomBar = this.add.rectangle(width / 2, height - 58, width, 116, 0x071210, 0.94);
+    const title = this.add
+      .text(width / 2, 82, "CHELANMANIA DRIVER", {
+        fontFamily: "Impact, system-ui, sans-serif",
+        fontSize: "52px",
+        color: "#ffef7d",
+        fontStyle: "900",
+        stroke: "#102421",
+        strokeThickness: 8,
+      })
+      .setOrigin(0.5);
+    const tag = this.add
+      .text(width / 2, height - 80, `${actor.config.displayName} turns ${opponent.config.displayName} inside out`, {
+        fontFamily: "system-ui, sans-serif",
+        fontSize: "20px",
+        color: "#fff7e6",
+        fontStyle: "900",
+        stroke: "#102421",
+        strokeThickness: 4,
+      })
+      .setOrigin(0.5);
+    const container = this.add.container(0, 0, [shade, topBar, bottomBar, title, tag]).setDepth(90).setScrollFactor(0);
+
+    for (let index = 0; index < 18; index += 1) {
+      const y = Phaser.Math.Between(150, height - 160);
+      const line = this.add.rectangle(width / 2 + Phaser.Math.Between(-80, 80), y, Phaser.Math.Between(180, 420), 5, 0xffef7d, 0.28);
+      line.setAngle(Phaser.Math.Between(-16, 16));
+      container.add(line);
+      this.tweens.add({
+        targets: line,
+        x: line.x + (actor.facing > 0 ? 260 : -260),
+        alpha: 0,
+        duration: Phaser.Math.Between(360, 720),
+        ease: "Cubic.Out",
+      });
+    }
+
+    this.tweens.add({ targets: title, scale: 1.12, yoyo: true, repeat: 2, duration: 110, ease: "Sine.InOut" });
+    this.tweens.add({ targets: container, alpha: 0, delay: CHELAN_SLAM_CUTSCENE_MS - 170, duration: 170, ease: "Quad.In" });
+    return container;
+  }
+
+  private createChelanSlamImpact(x: number, y: number, direction: 1 | -1) {
+    this.cameras.main.shake(220, 0.018);
+    this.cameras.main.flash(130, 255, 246, 184, false);
+    const ring = this.add.ellipse(x, y, 92, 24, 0xffef7d, 0.42).setStrokeStyle(6, 0xffffff, 0.8).setDepth(30).setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({
+      targets: ring,
+      scaleX: 3.4,
+      scaleY: 2.2,
+      alpha: 0,
+      duration: 420,
+      ease: "Quad.Out",
+      onComplete: () => ring.destroy(),
+    });
+    for (let index = 0; index < 16; index += 1) {
+      const spark = this.add.star(x, y - 18, 5, 4, Phaser.Math.Between(10, 18), 0xffef7d, 0.96).setDepth(31);
+      this.tweens.add({
+        targets: spark,
+        x: x + direction * Phaser.Math.Between(24, 220) + Phaser.Math.Between(-110, 110),
+        y: y - Phaser.Math.Between(28, 180),
+        angle: Phaser.Math.Between(-260, 260),
+        alpha: 0,
+        duration: Phaser.Math.Between(360, 700),
+        ease: "Cubic.Out",
+        onComplete: () => spark.destroy(),
+      });
+    }
+  }
+
   private resolveProposalSpinCharge(actor: RuntimeFighter, opponent: RuntimeFighter, time: number) {
     if (!actor.attack?.spinCharge) return;
     const charge = actor.attack.spinCharge;
@@ -1806,6 +2187,41 @@ export class FightScene extends Phaser.Scene {
     actor.sprite.setMaxVelocity(DEFAULT_FIGHTER_MAX_VELOCITY_X, DEFAULT_FIGHTER_MAX_VELOCITY_Y);
     actor.sprite.clearTint();
     this.clampFighterToArena(actor);
+  }
+
+  private resolveFighterStacking() {
+    if (this.oceanBossActive || this.proposalRockBossActive) return;
+    if (!this.playerOne.sprite.visible || !this.playerTwo.sprite.visible) return;
+
+    const oneBody = this.playerOne.sprite.body as Phaser.Physics.Arcade.Body;
+    const twoBody = this.playerTwo.sprite.body as Phaser.Physics.Arcade.Body;
+    const overlapX = Math.min(oneBody.right, twoBody.right) - Math.max(oneBody.left, twoBody.left);
+    const overlapY = Math.min(oneBody.bottom, twoBody.bottom) - Math.max(oneBody.top, twoBody.top);
+    if (overlapX < FIGHTER_STACK_MIN_OVERLAP_X || overlapY <= 0) return;
+
+    const oneCenterY = oneBody.top + oneBody.height / 2;
+    const twoCenterY = twoBody.top + twoBody.height / 2;
+    const upper = oneCenterY <= twoCenterY ? this.playerOne : this.playerTwo;
+    const lower = upper === this.playerOne ? this.playerTwo : this.playerOne;
+    const upperBody = upper.sprite.body as Phaser.Physics.Arcade.Body;
+    const lowerBody = lower.sprite.body as Phaser.Physics.Arcade.Body;
+
+    if (upperBody.bottom > lowerBody.top + FIGHTER_STACK_CONTACT_TOLERANCE) return;
+
+    const pushDirection: 1 | -1 = lower.sprite.x >= upper.sprite.x ? 1 : -1;
+    const desiredSeparation = Math.min(overlapX + FIGHTER_STACK_SEPARATION, FIGHTER_STACK_MAX_POSITION_PUSH);
+    const lowerRoom = pushDirection > 0 ? this.scale.width - lowerBody.right : lowerBody.left;
+    const lowerShift = Math.min(desiredSeparation, Math.max(0, lowerRoom));
+    const upperShift = desiredSeparation - lowerShift;
+
+    if (lowerShift > 0) lower.sprite.setX(lower.sprite.x + pushDirection * lowerShift);
+    if (upperShift > 0) upper.sprite.setX(upper.sprite.x - pushDirection * upperShift);
+
+    lower.sprite.setVelocityX(pushDirection * FIGHTER_STACK_LOWER_PUSH_SPEED);
+    upper.sprite.setVelocityX(-pushDirection * FIGHTER_STACK_UPPER_DRIFT_SPEED);
+    if (upperBody.velocity.y < FIGHTER_STACK_DOWNWARD_VELOCITY) {
+      upper.sprite.setVelocityY(FIGHTER_STACK_DOWNWARD_VELOCITY);
+    }
   }
 
   private clampActiveFightersToArena() {

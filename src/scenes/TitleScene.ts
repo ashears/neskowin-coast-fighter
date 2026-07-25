@@ -62,7 +62,7 @@ export class TitleScene extends Phaser.Scene {
       this.addButton(width / 2 + 150, 430, "View Characters", () => this.scene.start("CharacterViewerScene"), 300, 88, 4);
     } else {
       this.addButton(width / 2 - 290, 430, "Campaign", () => this.scene.start("CampaignSelectScene"), 255, 88, -5);
-      this.addButton(width / 2, 430, "Single Battle", () => this.startMode("local"), 285, 88, 0);
+      this.addButton(width / 2, 430, "Single Battle", () => this.startMode("ai"), 285, 88, 0);
       this.addButton(width / 2 + 290, 430, "Online Battle", () => this.scene.start("OnlineScene"), 285, 88, 5);
       this.addButton(width / 2, 535, "Back", () => this.showMainMenu(), 170, 62, 0);
     }
