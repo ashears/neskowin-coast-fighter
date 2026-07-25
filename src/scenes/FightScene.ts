@@ -142,6 +142,7 @@ interface DuckRunner {
   knockback: number;
   radius: number;
   velocityX: number;
+  chargeUntil: number;
   expiresAt: number;
   hit: boolean;
 }
@@ -219,6 +220,8 @@ const FIGHTER_STACK_DOWNWARD_VELOCITY = 190;
 const CHELAN_SLAM_CUTSCENE_MS = 920;
 const DUCK_HEAVY_CHARGE_MAX_MS = 1500;
 const DUCK_HEAVY_MIN_RATIO = 0.18;
+const DUCK_RUNNER_CHARGE_MS = 1000;
+const DUCK_RUNNER_SPEED = 780;
 const DUCK_MASCOT_DURATION_MS = 10000;
 
 export class FightScene extends Phaser.Scene {
@@ -2233,11 +2236,13 @@ export class FightScene extends Phaser.Scene {
   private spawnDuckRunner(actor: RuntimeFighter, time: number) {
     const attack = actor.config.attacks.light;
     const direction = actor.facing;
-    const startX = actor.sprite.x + direction * 96;
-    const floorY = this.fightFloorY(this.scale.height) - 78;
-    const dust = this.add.ellipse(-12, 66, 88, 22, 0xffef7d, 0.2).setBlendMode(Phaser.BlendModes.ADD);
+    const startX = actor.sprite.x;
+    const startY = actor.sprite.y - 126;
+    const glow = this.add.ellipse(0, 58, 92, 24, 0xd7ff4f, 0.22).setBlendMode(Phaser.BlendModes.ADD);
+    const dust = this.add.ellipse(-12, 72, 88, 22, 0xffef7d, 0).setBlendMode(Phaser.BlendModes.ADD);
     const runner = this.add.image(0, 0, "duck-flag-lamichael").setDisplaySize(72, 112).setFlipX(direction < 0);
-    const object = this.add.container(startX, floorY, [dust, runner]).setDepth(17);
+    const object = this.add.container(startX, startY, [glow, dust, runner]).setDepth(18).setAlpha(0.92);
+    const travelMs = ((this.scale.width + 280) / DUCK_RUNNER_SPEED) * 1000;
 
     this.duckRunners.push({
       object,
@@ -2245,18 +2250,46 @@ export class FightScene extends Phaser.Scene {
       damage: attack.damage,
       knockback: attack.knockback,
       radius: attack.range,
-      velocityX: direction * 690,
-      expiresAt: time + 850,
+      velocityX: direction * DUCK_RUNNER_SPEED,
+      chargeUntil: time + DUCK_RUNNER_CHARGE_MS,
+      expiresAt: time + DUCK_RUNNER_CHARGE_MS + travelMs + 250,
       hit: false,
+    });
+    this.tweens.add({
+      targets: object,
+      scaleX: 1.1,
+      scaleY: 1.1,
+      duration: 160,
+      yoyo: true,
+      repeat: 2,
+      ease: "Sine.InOut",
+      onComplete: () => object.setScale(1),
     });
   }
 
   private updateDuckRunners(time: number) {
     const delta = this.game.loop.delta / 1000;
     this.duckRunners = this.duckRunners.filter((runner) => {
-      if (runner.hit || time >= runner.expiresAt) {
+      if (time >= runner.expiresAt) {
         runner.object.destroy();
         return false;
+      }
+
+      if (time < runner.chargeUntil) {
+        const chargeRatio = Phaser.Math.Clamp((time - (runner.chargeUntil - DUCK_RUNNER_CHARGE_MS)) / DUCK_RUNNER_CHARGE_MS, 0, 1);
+        runner.object.x = Phaser.Math.Clamp(runner.owner.sprite.x, 76, this.scale.width - 76);
+        runner.object.y = runner.owner.sprite.y - 126 + Math.sin(time / 72) * 6;
+        runner.object.setAlpha(0.72 + chargeRatio * 0.28);
+        runner.object.setRotation(Math.sin(time / 52) * 0.035);
+        return true;
+      }
+
+      if (runner.object.alpha < 1) {
+        runner.object.setAlpha(1);
+        runner.object.setRotation(0);
+        (runner.object.getAt(0) as Phaser.GameObjects.Ellipse).setAlpha(0.16);
+        (runner.object.getAt(1) as Phaser.GameObjects.Ellipse).setAlpha(0.22);
+        this.createDuckRunnerLaunch(runner.object.x, this.fightFloorY(this.scale.height) - 44);
       }
 
       runner.object.x += runner.velocityX * delta;
@@ -2265,15 +2298,13 @@ export class FightScene extends Phaser.Scene {
       const target = runner.owner === this.playerOne ? this.playerTwo : this.playerOne;
       const xDistance = Math.abs(runner.object.x - target.sprite.x);
       const yDistance = Math.abs(runner.object.y - target.sprite.y);
-      if (xDistance <= 66 && yDistance <= 116) {
+      if (!runner.hit && xDistance <= 66 && yDistance <= 116) {
         runner.hit = true;
         const shielded = this.absorbDamageWithShield(target, runner.damage);
         target.sprite.setVelocityX(Math.sign(runner.velocityX) * runner.knockback * (shielded ? 0.34 : 1));
         target.sprite.setVelocityY(shielded ? -90 : -230);
         this.createDuckRunnerHit(runner.object.x, runner.object.y + 32);
         this.flashMoveLabel(target.sprite.x, target.sprite.y - 132, "TRUCKED");
-        runner.object.destroy();
-        return false;
       }
 
       if (runner.object.x < -140 || runner.object.x > this.scale.width + 140) {
@@ -2284,17 +2315,52 @@ export class FightScene extends Phaser.Scene {
     });
   }
 
-  private createDuckRunnerHit(x: number, y: number) {
-    const ring = this.add.ellipse(x, y, 76, 22, 0xd7ff4f, 0.34).setStrokeStyle(4, 0xffef7d, 0.72);
+  private createDuckRunnerLaunch(x: number, y: number) {
+    const burst = this.add.ellipse(x, y, 92, 26, 0xffef7d, 0.26).setStrokeStyle(3, 0xd7ff4f, 0.72);
     this.tweens.add({
-      targets: ring,
-      scaleX: 2.1,
+      targets: burst,
+      scaleX: 1.8,
       alpha: 0,
       duration: 260,
       ease: "Quad.Out",
+      onComplete: () => burst.destroy(),
+    });
+  }
+
+  private createDuckRunnerHit(x: number, y: number) {
+    const burst = this.add.circle(x, y - 20, 12, 0xffef7d, 0.5).setStrokeStyle(4, 0xffffff, 0.82).setBlendMode(Phaser.BlendModes.ADD);
+    const ring = this.add.ellipse(x, y, 76, 22, 0xd7ff4f, 0.34).setStrokeStyle(4, 0xffef7d, 0.72);
+    this.tweens.add({
+      targets: burst,
+      radius: 58,
+      alpha: 0,
+      duration: 300,
+      ease: "Quad.Out",
+      onComplete: () => burst.destroy(),
+    });
+    this.tweens.add({
+      targets: ring,
+      scaleX: 2.6,
+      scaleY: 1.25,
+      alpha: 0,
+      duration: 320,
+      ease: "Quad.Out",
       onComplete: () => ring.destroy(),
     });
-    this.cameras.main.shake(95, 0.006);
+    for (let index = 0; index < 7; index += 1) {
+      const spark = this.add.rectangle(x, y - 18, Phaser.Math.Between(10, 18), 4, index % 2 === 0 ? 0xffef7d : 0xd7ff4f, 0.86).setDepth(19);
+      this.tweens.add({
+        targets: spark,
+        x: x + Phaser.Math.Between(-82, 82),
+        y: y - Phaser.Math.Between(26, 86),
+        alpha: 0,
+        rotation: Phaser.Math.FloatBetween(-1.8, 1.8),
+        duration: Phaser.Math.Between(220, 380),
+        ease: "Cubic.Out",
+        onComplete: () => spark.destroy(),
+      });
+    }
+    this.cameras.main.shake(130, 0.009);
   }
 
   private spawnDuckMascot(actor: RuntimeFighter, time: number) {
