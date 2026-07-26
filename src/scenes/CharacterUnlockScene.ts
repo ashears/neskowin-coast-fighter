@@ -1,6 +1,8 @@
 import Phaser from "phaser";
 import { getFighter } from "../fighters";
 import { getLevel } from "../levels";
+import { drawCharacterSkinOverlay } from "../skins";
+import { getEquippedCharacterSkin } from "../victory";
 
 interface CharacterUnlockData {
   fighterId: string;
@@ -60,11 +62,16 @@ export class CharacterUnlockScene extends Phaser.Scene {
       .image(width / 2, 348, fighter.spriteKey)
       .setDisplaySize(this.getPreviewWidth(fighter.id), this.getPreviewHeight(fighter.id))
       .setDepth(10);
+    const skinOverlay = drawCharacterSkinOverlay(this, getEquippedCharacterSkin(fighter.id), fighter.id, width / 2, 348, this.getPreviewWidth(fighter.id), 11);
     const finalScaleX = sprite.scaleX;
     const finalScaleY = sprite.scaleY;
+    const finalSkinScaleX = skinOverlay?.scaleX ?? 1;
+    const finalSkinScaleY = skinOverlay?.scaleY ?? 1;
     sprite.setScale(0.18);
+    skinOverlay?.setScale(0.18);
     this.tweens.add({ targets: sprite, scaleX: finalScaleX, scaleY: finalScaleY, duration: 520, ease: "Back.Out" });
-    this.tweens.add({ targets: sprite, y: 330, duration: 760, yoyo: true, repeat: -1, ease: "Sine.InOut", delay: 520 });
+    if (skinOverlay) this.tweens.add({ targets: skinOverlay, scaleX: finalSkinScaleX, scaleY: finalSkinScaleY, duration: 520, ease: "Back.Out" });
+    this.tweens.add({ targets: skinOverlay ? [sprite, skinOverlay] : [sprite], y: "-=18", duration: 760, yoyo: true, repeat: -1, ease: "Sine.InOut", delay: 520 });
 
     this.add
       .text(width / 2, 503, fighter.displayName.toUpperCase(), {

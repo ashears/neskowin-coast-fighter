@@ -2,7 +2,9 @@ import Phaser from "phaser";
 import { getFighter } from "../fighters";
 import { getLevel } from "../levels";
 import { onlineSession, type MatchNetState } from "../online";
+import { drawCharacterSkinOverlay, type CharacterSkinConfig } from "../skins";
 import type { AttackKind, FighterConfig, MatchResult, MatchSelection } from "../types";
+import { getEquippedCharacterSkin } from "../victory";
 
 type ControlAction = "left" | "right" | "up" | "down" | "block" | "light" | "heavy" | "special";
 type ButtonState = Record<ControlAction, boolean>;
@@ -165,6 +167,8 @@ interface DuckMascotMotorcycle {
 interface RuntimeFighter {
   config: FighterConfig;
   sprite: Phaser.Physics.Arcade.Sprite;
+  skin?: CharacterSkinConfig;
+  skinOverlay?: Phaser.GameObjects.Image;
   nameLabel: Phaser.GameObjects.Text;
   shieldAura: Phaser.GameObjects.Ellipse;
   shieldEdge: Phaser.GameObjects.Ellipse;
@@ -244,6 +248,7 @@ interface ArenaPlatform {
   height: number;
   tint: number;
   accent: number;
+  passThrough?: boolean;
 }
 
 export class FightScene extends Phaser.Scene {
@@ -363,8 +368,8 @@ export class FightScene extends Phaser.Scene {
 
     if (this.isSmashArena()) {
       this.arenaPlatforms.forEach((platform) => {
-        this.physics.add.collider(this.playerOne.sprite, platform);
-        this.physics.add.collider(this.playerTwo.sprite, platform);
+        this.physics.add.collider(this.playerOne.sprite, platform, undefined, this.canCollideWithArenaPlatform, this);
+        this.physics.add.collider(this.playerTwo.sprite, platform, undefined, this.canCollideWithArenaPlatform, this);
       });
     } else if (!this.proposalRockBossActive && this.ground) this.physics.add.collider(this.playerOne.sprite, this.ground);
     if (!this.oceanBossActive && !this.proposalRockBossActive) {
@@ -453,9 +458,9 @@ export class FightScene extends Phaser.Scene {
 
     const platforms: ArenaPlatform[] = [
       { x: SMASH_WORLD_WIDTH / 2, y: SMASH_STAGE_FLOOR_Y, width: 1080, height: 38, tint: 0x34413d, accent: 0xe8c66b },
-      { x: SMASH_WORLD_WIDTH / 2 - 360, y: SMASH_STAGE_FLOOR_Y - 178, width: 360, height: 26, tint: 0x40524d, accent: 0x83d2c9 },
-      { x: SMASH_WORLD_WIDTH / 2 + 360, y: SMASH_STAGE_FLOOR_Y - 178, width: 360, height: 26, tint: 0x40524d, accent: 0x83d2c9 },
-      { x: SMASH_WORLD_WIDTH / 2, y: SMASH_STAGE_FLOOR_Y - 318, width: 430, height: 26, tint: 0x43524d, accent: 0xffef7d },
+      { x: SMASH_WORLD_WIDTH / 2 - 360, y: SMASH_STAGE_FLOOR_Y - 178, width: 360, height: 26, tint: 0x40524d, accent: 0x83d2c9, passThrough: true },
+      { x: SMASH_WORLD_WIDTH / 2 + 360, y: SMASH_STAGE_FLOOR_Y - 178, width: 360, height: 26, tint: 0x40524d, accent: 0x83d2c9, passThrough: true },
+      { x: SMASH_WORLD_WIDTH / 2, y: SMASH_STAGE_FLOOR_Y - 318, width: 430, height: 26, tint: 0x43524d, accent: 0xffef7d, passThrough: true },
     ];
 
     this.arenaPlatforms = platforms.map((platform) => this.createArenaPlatform(platform));
@@ -465,11 +470,29 @@ export class FightScene extends Phaser.Scene {
 
   private createArenaPlatform(platform: ArenaPlatform) {
     const base = this.add.rectangle(platform.x, platform.y, platform.width, platform.height, platform.tint, 1).setDepth(2);
+    base.setData("passThrough", platform.passThrough === true);
     base.setStrokeStyle(3, platform.accent, 0.88);
     this.add.rectangle(platform.x, platform.y - platform.height / 2 - 5, platform.width - 18, 5, platform.accent, 0.78).setDepth(3);
     this.add.rectangle(platform.x, platform.y + platform.height / 2 + 14, platform.width * 0.92, 20, 0x071210, 0.22).setDepth(1);
     this.physics.add.existing(base, true);
     return base;
+  }
+
+  private canCollideWithArenaPlatform(
+    fighterObject: Phaser.Types.Physics.Arcade.GameObjectWithBody | Phaser.Physics.Arcade.Body | Phaser.Physics.Arcade.StaticBody | Phaser.Tilemaps.Tile,
+    platformObject: Phaser.Types.Physics.Arcade.GameObjectWithBody | Phaser.Physics.Arcade.Body | Phaser.Physics.Arcade.StaticBody | Phaser.Tilemaps.Tile,
+  ) {
+    const fighter = fighterObject as Phaser.Physics.Arcade.Sprite;
+    const platform = platformObject as Phaser.GameObjects.Rectangle;
+    if (!platform.getData("passThrough")) return true;
+
+    const fighterBody = fighter.body as Phaser.Physics.Arcade.Body;
+    const platformBody = platform.body as Phaser.Physics.Arcade.StaticBody;
+    if (!fighterBody || !platformBody) return false;
+    if (fighterBody.velocity.y < 0) return false;
+
+    const previousBottom = fighterBody.bottom - Math.max(0, fighterBody.deltaY());
+    return previousBottom <= platformBody.top + 8;
   }
 
   private createOceanBossArena() {
@@ -505,6 +528,7 @@ export class FightScene extends Phaser.Scene {
     this.playerTwo.sprite.setImmovable(true);
     (this.playerTwo.sprite.body as Phaser.Physics.Arcade.Body).setAllowGravity(false);
     this.playerTwo.nameLabel.setVisible(false);
+    this.playerTwo.skinOverlay?.setVisible(false);
     this.playerTwo.shieldAura.setVisible(false);
     this.playerTwo.shieldEdge.setVisible(false);
   }
@@ -559,6 +583,7 @@ export class FightScene extends Phaser.Scene {
     this.playerTwo.sprite.setImmovable(true);
     (this.playerTwo.sprite.body as Phaser.Physics.Arcade.Body).setAllowGravity(false);
     this.playerTwo.nameLabel.setVisible(false);
+    this.playerTwo.skinOverlay?.setVisible(false);
     this.playerTwo.shieldAura.setVisible(false);
     this.playerTwo.shieldEdge.setVisible(false);
   }
@@ -568,6 +593,7 @@ export class FightScene extends Phaser.Scene {
     this.playerOne.sprite.setImmovable(true);
     (this.playerOne.sprite.body as Phaser.Physics.Arcade.Body).setAllowGravity(false);
     this.playerOne.nameLabel.setVisible(false);
+    this.playerOne.skinOverlay?.setVisible(false);
     this.playerOne.shieldAura.setVisible(false);
     this.playerOne.shieldEdge.setVisible(false);
   }
@@ -655,10 +681,14 @@ export class FightScene extends Phaser.Scene {
       .setStrokeStyle(3, 0x7ee8ff, 0.95)
       .setBlendMode(Phaser.BlendModes.ADD)
       .setVisible(false);
+    const skin = getEquippedCharacterSkin(config.id);
+    const skinOverlay = drawCharacterSkinOverlay(this, skin, config.id, x, y, displaySize.width, sprite.depth + 1);
 
     return {
       config,
       sprite,
+      skin,
+      skinOverlay,
       nameLabel,
       shieldAura,
       shieldEdge,
@@ -1274,11 +1304,13 @@ export class FightScene extends Phaser.Scene {
     if (this.oceanBossActive) {
       this.playerTwo.sprite.setVisible(false);
       this.playerTwo.nameLabel.setVisible(false);
+      this.playerTwo.skinOverlay?.setVisible(false);
       this.flashMoveLabel(width / 2, 176, "DODGE THE BREAKERS");
     } else if (this.proposalRockBossActive) {
       this.configureProposalRockBossPlayerController();
       this.playerTwo.sprite.setVisible(false);
       this.playerTwo.nameLabel.setVisible(false);
+      this.playerTwo.skinOverlay?.setVisible(false);
       this.proposalRockBossSprite?.clearTint();
       this.flashMoveLabel(width / 2, 176, "CLEAN THE BEACH");
     } else if (this.isSmashArena()) {
@@ -1299,7 +1331,7 @@ export class FightScene extends Phaser.Scene {
     const body = actor.sprite.body as Phaser.Physics.Arcade.Body;
     actor.facing = actor.sprite.x <= opponent.sprite.x ? 1 : -1;
     actor.sprite.setFlipX(actor.facing === -1);
-    actor.nameLabel.setPosition(actor.sprite.x, actor.sprite.y - 132);
+    this.syncFighterAttachments(actor);
     actor.isBlocking = controls.block && body.blocked.down && !actor.attack && actor.shield > 0;
 
     const speed = actor.isBlocking ? actor.config.speed * 0.38 : actor.config.speed;
@@ -1327,6 +1359,7 @@ export class FightScene extends Phaser.Scene {
 
     actor.sprite.setTint(actor.isBlocking ? 0xa8c6ff : actor.config.tint);
     this.updateShieldVisual(actor);
+    this.syncFighterAttachments(actor);
   }
 
   private updateOceanBoss(time: number) {
@@ -2911,6 +2944,7 @@ export class FightScene extends Phaser.Scene {
       actor.health = 999;
       actor.sprite.setVisible(false);
       actor.nameLabel.setVisible(false);
+      actor.skinOverlay?.setVisible(false);
       actor.shieldAura.setVisible(false);
       actor.shieldEdge.setVisible(false);
       return;
@@ -3024,6 +3058,18 @@ export class FightScene extends Phaser.Scene {
 
   private syncFighterAttachments(actor: RuntimeFighter) {
     actor.nameLabel.setPosition(actor.sprite.x, actor.sprite.y - 132);
+    if (actor.skin && actor.skinOverlay) {
+      const visible = actor.sprite.visible;
+      const offsetX = actor.skin.placement.offsetX * actor.sprite.displayWidth * (actor.sprite.flipX ? -1 : 1);
+      actor.skinOverlay
+        .setPosition(actor.sprite.x + offsetX, actor.sprite.y + actor.skin.placement.offsetY * actor.sprite.displayWidth)
+        .setDisplaySize(actor.sprite.displayWidth * actor.skin.placement.widthRatio, actor.sprite.displayWidth * actor.skin.placement.widthRatio * 0.67)
+        .setFlipX(actor.sprite.flipX)
+        .setRotation(actor.sprite.rotation)
+        .setAlpha(actor.sprite.alpha)
+        .setVisible(visible)
+        .setDepth(actor.sprite.depth + 1);
+    }
     this.updateShieldVisual(actor);
   }
 
@@ -3260,7 +3306,7 @@ export class FightScene extends Phaser.Scene {
     actor.sprite.setPosition(state.x, state.y);
     actor.sprite.setVelocity(state.velocityX, state.velocityY);
     actor.sprite.setFlipX(state.facing === -1);
-    actor.nameLabel.setPosition(actor.sprite.x, actor.sprite.y - 132);
+    this.syncFighterAttachments(actor);
     actor.sprite.setTint(actor.isBlocking ? 0xa8c6ff : actor.config.tint);
     this.updateShieldVisual(actor);
   }

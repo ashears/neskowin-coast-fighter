@@ -2,7 +2,9 @@ import Phaser from "phaser";
 import { campaignLevels, isFighterUnlocked, STARTING_FIGHTER_ID } from "../campaign";
 import { fighters } from "../fighters";
 import { rerenderOnResize } from "../responsive";
+import { drawCharacterSkinOverlay } from "../skins";
 import type { AttackConfig, AttackKind, FighterConfig } from "../types";
+import { getEquippedCharacterSkin } from "../victory";
 
 interface CharacterViewerData {
   fighterId?: string;
@@ -74,7 +76,9 @@ export class CharacterViewerScene extends Phaser.Scene {
     this.add.rectangle(352, 202, 342, 196, rarityColor, 0.28).setStrokeStyle(2, rarityColor, 0.74);
     const spotlight = this.add.ellipse(352, 434, 312, 72, rarityColor, 0.24).setBlendMode(Phaser.BlendModes.ADD);
     this.tweens.add({ targets: spotlight, scaleX: 1.05, alpha: 0.42, duration: 920, yoyo: true, repeat: -1, ease: "Sine.InOut" });
-    this.add.image(352, 350, fighter.spriteKey).setDisplaySize(this.getPreviewWidth(fighter.id), this.getPreviewHeight(fighter.id)).setAlpha(unlocked ? 1 : 0.28);
+    const previewWidth = this.getPreviewWidth(fighter.id);
+    this.add.image(352, 350, fighter.spriteKey).setDisplaySize(previewWidth, this.getPreviewHeight(fighter.id)).setAlpha(unlocked ? 1 : 0.28);
+    drawCharacterSkinOverlay(this, getEquippedCharacterSkin(fighter.id), fighter.id, 352, 350, previewWidth)?.setAlpha(unlocked ? 1 : 0.28);
     if (!unlocked) {
       this.add.rectangle(352, 350, 342, 374, 0x050808, 0.48);
       this.add.text(352, 350, "LOCKED", {
@@ -183,6 +187,7 @@ export class CharacterViewerScene extends Phaser.Scene {
         .rectangle(x, tileY, 128, 66, selected ? this.getRarityColor(fighter) : 0x101820, selected ? 0.92 : 0.82)
         .setStrokeStyle(selected ? 4 : 2, selected ? 0xf7f2e6 : 0x41504b);
       this.add.image(x - 38, tileY - 5, fighter.spriteKey).setDisplaySize(54, 42).setAlpha(unlocked ? 1 : 0.28);
+      drawCharacterSkinOverlay(this, getEquippedCharacterSkin(fighter.id), fighter.id, x - 38, tileY - 5, 54)?.setAlpha(unlocked ? 1 : 0.28);
       if (!unlocked) this.addLockIcon(x - 38, tileY - 5, 0.82);
       this.add.text(x + 18, tileY - 13, unlocked ? fighter.displayName : "?????", {
         fontFamily: "system-ui, sans-serif",

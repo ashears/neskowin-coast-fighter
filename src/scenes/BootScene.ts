@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { fighters } from "../fighters";
 import { levels } from "../levels";
+import { characterSkins } from "../skins";
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -26,6 +27,9 @@ export class BootScene extends Phaser.Scene {
     for (const fighter of fighters) {
       const extension = fighter.id === "proposal-rock" || fighter.id === "chelan" || fighter.id === "duck-flag" ? "png" : "svg";
       this.load.image(fighter.spriteKey, `assets/fighters/${fighter.id}.${extension}`);
+    }
+    for (const skin of characterSkins) {
+      this.load.image(skin.textureKey, skin.assetPath);
     }
   }
 

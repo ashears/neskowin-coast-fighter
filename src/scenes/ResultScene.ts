@@ -2,11 +2,13 @@ import Phaser from "phaser";
 import { campaignLevels, completeCampaignLevel, getCampaignProgress } from "../campaign";
 import { getFighter } from "../fighters";
 import { getLevel } from "../levels";
+import { drawCharacterSkinOverlay } from "../skins";
 import type { FighterConfig } from "../types";
 import type { MatchResult } from "../types";
 import {
   awardVictoryCoins,
   calculateVictoryReward,
+  getEquippedCharacterSkin,
   getEquippedVictoryAnimation,
   getVictoryProgress,
   type CustomVictorySettings,
@@ -108,24 +110,27 @@ export class ResultScene extends Phaser.Scene {
           });
         } else this.scene.start("CampaignSelectScene");
       });
-      this.addButton(width / 2, 674, "Victory Store", () => this.scene.start("VictoryStoreScene"));
+      this.addButton(width / 2, 674, "Store", () => this.scene.start("VictoryStoreScene"));
       this.addButton(width / 2 + 280, 674, "Title", () => this.scene.start("TitleScene"));
       return;
     }
 
     this.addButton(width / 2 - 280, 674, "Rematch", () => this.scene.start("CharacterSelectScene", { mode: this.result?.mode ?? "ai" }));
-    this.addButton(width / 2, 674, "Victory Store", () => this.scene.start("VictoryStoreScene"));
+    this.addButton(width / 2, 674, "Store", () => this.scene.start("VictoryStoreScene"));
     this.addButton(width / 2 + 280, 674, "Title", () => this.scene.start("TitleScene"));
   }
 
   private playVictoryAnimation(animation: VictoryAnimationConfig, winner: FighterConfig, custom: CustomVictorySettings) {
     const { width, height } = this.scale;
     const accent = animation.id === "custom-sign" ? custom.color : animation.accent;
-    const sprite = this.add.image(width / 2, 500, winner.spriteKey).setDisplaySize(this.getPreviewWidth(winner.id), this.getPreviewHeight(winner.id)).setDepth(14);
+    const previewWidth = this.getPreviewWidth(winner.id);
+    const sprite = this.add.image(width / 2, 500, winner.spriteKey).setDisplaySize(previewWidth, this.getPreviewHeight(winner.id)).setDepth(14);
+    const skinOverlay = drawCharacterSkinOverlay(this, getEquippedCharacterSkin(winner.id), winner.id, width / 2, 500, previewWidth, 15);
+    const fighterVisuals = skinOverlay ? [sprite, skinOverlay] : [sprite];
     const shadow = this.add.ellipse(width / 2, 612, 300, 46, 0x071210, 0.36).setDepth(12);
 
     if (animation.id === "jump-celebration") {
-      this.tweens.add({ targets: sprite, y: 418, duration: 360, yoyo: true, repeat: -1, ease: "Quad.Out" });
+      this.tweens.add({ targets: fighterVisuals, y: "-=82", duration: 360, yoyo: true, repeat: -1, ease: "Quad.Out" });
       this.tweens.add({ targets: shadow, scaleX: 0.62, alpha: 0.18, duration: 360, yoyo: true, repeat: -1, ease: "Quad.Out" });
       this.createLandingPops(width / 2, 614, accent);
       return;
@@ -133,27 +138,27 @@ export class ResultScene extends Phaser.Scene {
 
     if (animation.id === "spin-celebration") {
       this.createChargeRing(width / 2, 500, accent);
-      this.tweens.add({ targets: sprite, rotation: Math.PI * 2, x: width / 2 + 86, duration: 820, yoyo: true, repeat: -1, ease: "Sine.InOut" });
-      this.tweens.add({ targets: sprite, scaleX: sprite.scaleX * 1.08, scaleY: sprite.scaleY * 0.92, duration: 410, yoyo: true, repeat: -1, ease: "Sine.InOut" });
+      this.tweens.add({ targets: fighterVisuals, rotation: Math.PI * 2, x: "+=86", duration: 820, yoyo: true, repeat: -1, ease: "Sine.InOut" });
+      this.tweens.add({ targets: fighterVisuals, scaleX: "*=1.08", scaleY: "*=0.92", duration: 410, yoyo: true, repeat: -1, ease: "Sine.InOut" });
       return;
     }
 
     if (animation.id.startsWith("aura-")) {
       this.createPowerAura(width / 2, 506, accent);
-      this.tweens.add({ targets: sprite, y: 486, duration: 120, yoyo: true, repeat: -1, ease: "Stepped" });
+      this.tweens.add({ targets: fighterVisuals, y: "-=14", duration: 120, yoyo: true, repeat: -1, ease: "Stepped" });
       this.cameras.main.shake(520, 0.0025);
       return;
     }
 
     if (animation.id === "coin-burst") {
       this.createCoinBurst(width / 2, 472);
-      this.tweens.add({ targets: sprite, y: 478, duration: 640, yoyo: true, repeat: -1, ease: "Sine.InOut" });
+      this.tweens.add({ targets: fighterVisuals, y: "-=22", duration: 640, yoyo: true, repeat: -1, ease: "Sine.InOut" });
       return;
     }
 
     if (animation.id === "bonfire") {
       this.createBonfire(width / 2, 622);
-      this.tweens.add({ targets: sprite, y: 480, duration: 760, yoyo: true, repeat: -1, ease: "Sine.InOut" });
+      this.tweens.add({ targets: fighterVisuals, y: "-=20", duration: 760, yoyo: true, repeat: -1, ease: "Sine.InOut" });
       return;
     }
 
@@ -174,7 +179,7 @@ export class ResultScene extends Phaser.Scene {
     }
 
     this.createClassicRays(width / 2, 500, accent);
-    this.tweens.add({ targets: sprite, y: 480, duration: 760, yoyo: true, repeat: -1, ease: "Sine.InOut" });
+    this.tweens.add({ targets: fighterVisuals, y: "-=20", duration: 760, yoyo: true, repeat: -1, ease: "Sine.InOut" });
   }
 
   private createClassicRays(x: number, y: number, color: number) {
@@ -188,23 +193,186 @@ export class ResultScene extends Phaser.Scene {
   }
 
   private createPowerAura(x: number, y: number, color: number) {
-    for (let index = 0; index < 5; index += 1) {
-      const aura = this.add.ellipse(x, y + 20, 190 + index * 32, 260 + index * 34, color, 0.07).setStrokeStyle(4, color, 0.34).setDepth(11).setBlendMode(Phaser.BlendModes.ADD);
-      this.tweens.add({ targets: aura, scaleX: 1.14, scaleY: 1.08, alpha: 0.02, duration: 520 + index * 90, yoyo: true, repeat: -1, ease: "Sine.InOut" });
-    }
-    for (let index = 0; index < 28; index += 1) {
-      const spark = this.add.rectangle(Phaser.Math.Between(x - 120, x + 120), Phaser.Math.Between(y - 100, y + 120), 7, 22, color, 0.9).setDepth(13).setBlendMode(Phaser.BlendModes.ADD);
+    const coreColor = this.mixAuraColor(color, 0xffffff, 0.5);
+    const shadowColor = this.mixAuraColor(color, 0x101820, 0.28);
+    const floorY = y + 116;
+    const groundGlow = this.add.ellipse(x, floorY, 360, 54, color, 0.2).setDepth(10).setBlendMode(Phaser.BlendModes.ADD);
+    const hotCore = this.add.ellipse(x, floorY - 70, 188, 276, coreColor, 0.13).setDepth(11).setBlendMode(Phaser.BlendModes.ADD);
+    const innerHeat = this.add.ellipse(x, floorY - 84, 92, 226, 0xffffff, 0.08).setDepth(12).setBlendMode(Phaser.BlendModes.ADD);
+
+    this.tweens.add({ targets: groundGlow, scaleX: 1.18, scaleY: 0.74, alpha: 0.09, duration: 180, yoyo: true, repeat: -1, ease: "Sine.InOut" });
+    this.tweens.add({ targets: hotCore, scaleX: 1.08, scaleY: 1.16, alpha: 0.05, duration: 96, yoyo: true, repeat: -1, ease: "Stepped" });
+    this.tweens.add({ targets: innerHeat, scaleX: 1.26, scaleY: 1.08, alpha: 0.02, duration: 130, yoyo: true, repeat: -1, ease: "Sine.InOut" });
+
+    for (let index = 0; index < 4; index += 1) {
+      const ring = this.add.ellipse(x, floorY - index * 18, 210 + index * 58, 34 + index * 10, color, 0.02).setStrokeStyle(3, coreColor, 0.28).setDepth(10).setBlendMode(Phaser.BlendModes.ADD);
       this.tweens.add({
-        targets: spark,
-        y: spark.y - Phaser.Math.Between(120, 230),
+        targets: ring,
+        scaleX: 1.7,
+        scaleY: 1.34,
+        y: ring.y - 18,
         alpha: 0,
-        duration: Phaser.Math.Between(520, 980),
+        duration: 620 + index * 120,
         repeat: -1,
-        delay: Phaser.Math.Between(0, 420),
+        delay: index * 150,
         ease: "Quad.Out",
-        onRepeat: () => spark.setPosition(Phaser.Math.Between(x - 120, x + 120), Phaser.Math.Between(y + 60, y + 130)).setAlpha(0.9),
+        onRepeat: () => ring.setPosition(x, floorY - index * 18).setScale(1).setAlpha(0.34),
       });
     }
+
+    for (let index = 0; index < 12; index += 1) {
+      const side = index % 2 === 0 ? -1 : 1;
+      const layerColor = index % 3 === 0 ? coreColor : index % 3 === 1 ? color : shadowColor;
+      this.createAuraFlameWisp(x, floorY, layerColor, {
+        side,
+        offset: Phaser.Math.Between(14, 92),
+        height: Phaser.Math.Between(218, 352),
+        width: Phaser.Math.Between(38, 86),
+        delay: index * 58,
+        duration: Phaser.Math.Between(560, 920),
+        alpha: index % 3 === 0 ? 0.42 : 0.26,
+        depth: index % 3 === 0 ? 13 : 11,
+      });
+    }
+
+    for (let index = 0; index < 7; index += 1) {
+      this.createAuraLightning(x, floorY, index % 2 === 0 ? coreColor : 0xffffff, index * 84);
+    }
+
+    for (let index = 0; index < 42; index += 1) {
+      this.createAuraEmber(x, floorY, index % 5 === 0 ? 0xffffff : coreColor, index * 24);
+    }
+  }
+
+  private createAuraFlameWisp(
+    x: number,
+    floorY: number,
+    color: number,
+    config: { side: 1 | -1; offset: number; height: number; width: number; delay: number; duration: number; alpha: number; depth: number },
+  ) {
+    const flame = this.add.graphics().setDepth(config.depth).setBlendMode(Phaser.BlendModes.ADD);
+    const state = { progress: 0 };
+    const draw = () => {
+      const wave = Math.sin(state.progress * Math.PI * 2);
+      const snap = Math.sin(state.progress * Math.PI * 8) * 0.16;
+      const baseX = x + config.side * (config.offset + wave * 18);
+      const tipX = x + config.side * (config.offset * 0.35 + Math.sin(state.progress * Math.PI * 5) * 40);
+      const topY = floorY - config.height * (0.86 + state.progress * 0.24);
+      const waistY = floorY - config.height * 0.48;
+      const width = config.width * (1 - state.progress * 0.28);
+      const alpha = config.alpha * (0.58 + Math.abs(wave) * 0.42) * (1 - state.progress * 0.42);
+      const curvePoint = (startX: number, startY: number, controlX: number, controlY: number, endX: number, endY: number, ratio: number) => {
+        const inverse = 1 - ratio;
+        return {
+          x: inverse * inverse * startX + 2 * inverse * ratio * controlX + ratio * ratio * endX,
+          y: inverse * inverse * startY + 2 * inverse * ratio * controlY + ratio * ratio * endY,
+        };
+      };
+
+      flame.clear();
+      flame.fillStyle(color, alpha);
+      flame.beginPath();
+      const leftBaseX = baseX - config.side * width * 0.62;
+      const rightBaseX = baseX + config.side * width * 0.46;
+      flame.moveTo(leftBaseX, floorY + 4);
+      for (let step = 1; step <= 8; step += 1) {
+        const point = curvePoint(leftBaseX, floorY + 4, baseX - config.side * width * (1.12 + snap), waistY, tipX, topY, step / 8);
+        flame.lineTo(point.x, point.y);
+      }
+      for (let step = 1; step <= 8; step += 1) {
+        const point = curvePoint(tipX, topY, baseX + config.side * width * (0.78 - snap), waistY + 28, rightBaseX, floorY + 4, step / 8);
+        flame.lineTo(point.x, point.y);
+      }
+      flame.closePath();
+      flame.fillPath();
+
+      flame.lineStyle(2, this.mixAuraColor(color, 0xffffff, 0.62), alpha * 0.92);
+      flame.beginPath();
+      flame.moveTo(baseX, floorY - 10);
+      for (let step = 1; step <= 7; step += 1) {
+        const point = curvePoint(baseX, floorY - 10, baseX + config.side * width * 0.38, waistY + wave * 18, tipX, topY + 12, step / 7);
+        flame.lineTo(point.x, point.y);
+      }
+      flame.strokePath();
+    };
+
+    draw();
+    this.tweens.add({
+      targets: state,
+      progress: 1,
+      duration: config.duration,
+      repeat: -1,
+      delay: config.delay,
+      ease: "Sine.InOut",
+      onUpdate: draw,
+      onRepeat: () => {
+        config.offset = Phaser.Math.Between(12, 98);
+        config.height = Phaser.Math.Between(220, 370);
+      },
+    });
+  }
+
+  private createAuraLightning(x: number, floorY: number, color: number, delay: number) {
+    const bolt = this.add.graphics().setDepth(15).setBlendMode(Phaser.BlendModes.ADD);
+    const redraw = () => {
+      const side = Phaser.Math.RND.pick([-1, 1]);
+      const startX = x + side * Phaser.Math.Between(42, 128);
+      let cursorX = startX;
+      let cursorY = floorY - Phaser.Math.Between(18, 70);
+      bolt.clear();
+      bolt.lineStyle(Phaser.Math.Between(2, 4), color, 0.72);
+      bolt.beginPath();
+      bolt.moveTo(cursorX, cursorY);
+      for (let step = 0; step < 5; step += 1) {
+        cursorX += side * Phaser.Math.Between(-34, 24);
+        cursorY -= Phaser.Math.Between(28, 58);
+        bolt.lineTo(cursorX, cursorY);
+      }
+      bolt.strokePath();
+      bolt.setAlpha(1);
+    };
+    this.tweens.add({
+      targets: bolt,
+      alpha: 0,
+      duration: 110,
+      repeat: -1,
+      repeatDelay: Phaser.Math.Between(170, 360),
+      delay,
+      ease: "Quad.Out",
+      onStart: redraw,
+      onRepeat: redraw,
+    });
+  }
+
+  private createAuraEmber(x: number, floorY: number, color: number, delay: number) {
+    const ember = this.add.circle(x, floorY, Phaser.Math.Between(2, 6), color, 0.85).setDepth(16).setBlendMode(Phaser.BlendModes.ADD);
+    const reset = () => {
+      ember
+        .setPosition(x + Phaser.Math.Between(-138, 138), floorY + Phaser.Math.Between(-8, 30))
+        .setScale(Phaser.Math.FloatBetween(0.8, 1.7))
+        .setAlpha(Phaser.Math.FloatBetween(0.46, 0.92));
+    };
+    reset();
+    this.tweens.add({
+      targets: ember,
+      x: ember.x + Phaser.Math.Between(-60, 60),
+      y: floorY - Phaser.Math.Between(170, 360),
+      alpha: 0,
+      scale: 0.28,
+      duration: Phaser.Math.Between(560, 1180),
+      repeat: -1,
+      delay,
+      ease: "Cubic.Out",
+      onRepeat: reset,
+    });
+  }
+
+  private mixAuraColor(color: number, target: number, amount: number) {
+    const inverse = 1 - amount;
+    const red = Math.round(((color >> 16) & 0xff) * inverse + ((target >> 16) & 0xff) * amount);
+    const green = Math.round(((color >> 8) & 0xff) * inverse + ((target >> 8) & 0xff) * amount);
+    const blue = Math.round((color & 0xff) * inverse + (target & 0xff) * amount);
+    return (red << 16) | (green << 8) | blue;
   }
 
   private createChargeRing(x: number, y: number, color: number) {

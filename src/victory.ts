@@ -1,3 +1,5 @@
+import { characterSkins, getCharacterSkin, type CharacterSkinId } from "./skins";
+
 export type VictoryAnimationId =
   | "classic"
   | "aura-gold"
@@ -27,6 +29,8 @@ interface VictoryProgress {
   coins: number;
   ownedAnimationIds: VictoryAnimationId[];
   equippedAnimationId: VictoryAnimationId;
+  ownedSkinIds: CharacterSkinId[];
+  equippedSkinIdsByFighter: Record<string, CharacterSkinId | undefined>;
   custom: CustomVictorySettings;
   creditedMatchKeys: string[];
 }
@@ -132,6 +136,12 @@ export function getVictoryAnimation(id: string | undefined) {
   return victoryAnimations.find((animation) => animation.id === id) ?? victoryAnimations[0];
 }
 
+export function getEquippedCharacterSkin(fighterId: string) {
+  const skinId = getVictoryProgress().equippedSkinIdsByFighter[fighterId];
+  const skin = getCharacterSkin(skinId);
+  return skin?.fighterId === fighterId ? skin : undefined;
+}
+
 export function isVictoryAnimationOwned(id: VictoryAnimationId) {
   return getVictoryProgress().ownedAnimationIds.includes(id);
 }
@@ -152,10 +162,45 @@ export function purchaseVictoryAnimation(id: VictoryAnimationId) {
   return { ok: true, progress: nextProgress };
 }
 
+export function purchaseCharacterSkin(id: CharacterSkinId) {
+  const skin = getCharacterSkin(id);
+  const progress = getVictoryProgress();
+  if (!skin) return { ok: false, progress };
+  if (progress.ownedSkinIds.includes(skin.id)) return { ok: true, progress };
+  if (progress.coins < skin.price) return { ok: false, progress };
+
+  const nextProgress = {
+    ...progress,
+    coins: progress.coins - skin.price,
+    ownedSkinIds: [...progress.ownedSkinIds, skin.id],
+    equippedSkinIdsByFighter: {
+      ...progress.equippedSkinIdsByFighter,
+      [skin.fighterId]: skin.id,
+    },
+  };
+  saveVictoryProgress(nextProgress);
+  return { ok: true, progress: nextProgress };
+}
+
 export function equipVictoryAnimation(id: VictoryAnimationId) {
   const progress = getVictoryProgress();
   if (!progress.ownedAnimationIds.includes(id)) return progress;
   const nextProgress = { ...progress, equippedAnimationId: id };
+  saveVictoryProgress(nextProgress);
+  return nextProgress;
+}
+
+export function equipCharacterSkin(id: CharacterSkinId) {
+  const skin = getCharacterSkin(id);
+  const progress = getVictoryProgress();
+  if (!skin || !progress.ownedSkinIds.includes(skin.id)) return progress;
+  const nextProgress = {
+    ...progress,
+    equippedSkinIdsByFighter: {
+      ...progress.equippedSkinIdsByFighter,
+      [skin.fighterId]: skin.id,
+    },
+  };
   saveVictoryProgress(nextProgress);
   return nextProgress;
 }
@@ -204,6 +249,8 @@ function defaultProgress(): VictoryProgress {
     coins: 0,
     ownedAnimationIds: [...STARTER_ANIMATION_IDS],
     equippedAnimationId: STARTING_ANIMATION_ID,
+    ownedSkinIds: [],
+    equippedSkinIdsByFighter: {},
     custom: { ...DEFAULT_CUSTOM },
     creditedMatchKeys: [],
   };
@@ -216,11 +263,26 @@ function normalizeProgress(progress: Partial<VictoryProgress>): VictoryProgress 
   const equippedAnimationId = ownedAnimationIds.includes(progress.equippedAnimationId as VictoryAnimationId)
     ? (progress.equippedAnimationId as VictoryAnimationId)
     : STARTING_ANIMATION_ID;
+  const ownedSkinIds = Array.isArray(progress.ownedSkinIds)
+    ? progress.ownedSkinIds.filter((id): id is CharacterSkinId => characterSkins.some((skin) => skin.id === id))
+    : [];
+  const equippedSkinIdsByFighter: Record<string, CharacterSkinId | undefined> = {};
+  const rawEquippedSkins = progress.equippedSkinIdsByFighter;
+  if (rawEquippedSkins && typeof rawEquippedSkins === "object") {
+    Object.entries(rawEquippedSkins).forEach(([fighterId, skinId]) => {
+      const skin = getCharacterSkin(skinId);
+      if (skin && skin.fighterId === fighterId && ownedSkinIds.includes(skin.id)) {
+        equippedSkinIdsByFighter[fighterId] = skin.id;
+      }
+    });
+  }
   const pattern = progress.custom?.pattern;
   return {
     coins: Number.isFinite(progress.coins) ? Math.max(0, Math.floor(progress.coins ?? 0)) : 0,
     ownedAnimationIds: Array.from(new Set([...STARTER_ANIMATION_IDS, ...ownedAnimationIds])),
     equippedAnimationId,
+    ownedSkinIds: Array.from(new Set(ownedSkinIds)),
+    equippedSkinIdsByFighter,
     custom: {
       message: normalizeCustomMessage(progress.custom?.message ?? DEFAULT_CUSTOM.message),
       color: Number.isFinite(progress.custom?.color) ? progress.custom!.color : DEFAULT_CUSTOM.color,

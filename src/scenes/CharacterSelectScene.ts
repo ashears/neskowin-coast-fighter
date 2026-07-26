@@ -3,7 +3,9 @@ import { isFighterUnlocked, STARTING_FIGHTER_ID } from "../campaign";
 import { fighters } from "../fighters";
 import { onlineSession } from "../online";
 import { rerenderOnResize } from "../responsive";
+import { drawCharacterSkinOverlay } from "../skins";
 import type { GameMode } from "../types";
+import { getEquippedCharacterSkin } from "../victory";
 
 interface CharacterSelectData {
   mode: GameMode;
@@ -90,7 +92,9 @@ export class CharacterSelectScene extends Phaser.Scene {
         fontStyle: "900",
       })
       .setOrigin(0.5);
-    this.add.image(x, y - 36, fighter.spriteKey).setDisplaySize(this.getPreviewWidth(fighter.id), this.getPreviewHeight(fighter.id));
+    const previewWidth = this.getPreviewWidth(fighter.id);
+    this.add.image(x, y - 36, fighter.spriteKey).setDisplaySize(previewWidth, this.getPreviewHeight(fighter.id));
+    drawCharacterSkinOverlay(this, getEquippedCharacterSkin(fighter.id), fighter.id, x, y - 36, previewWidth);
     this.add
       .text(x, y + 122, fighter.displayName.toUpperCase(), {
         fontFamily: "Impact, system-ui, sans-serif",
@@ -123,6 +127,7 @@ export class CharacterSelectScene extends Phaser.Scene {
       const stroke = isP1 ? 0xe43f2e : isP2 ? 0x1976d2 : 0xf7f2e6;
       const bg = this.add.rectangle(tileX, y, 86, 86, unlocked ? 0x101820 : 0x313a36, 0.9).setStrokeStyle(isP1 || isP2 ? 5 : 2, stroke);
       this.add.image(tileX, y - 8, fighter.spriteKey).setDisplaySize(68, 54).setAlpha(unlocked ? 1 : 0.34);
+      drawCharacterSkinOverlay(this, getEquippedCharacterSkin(fighter.id), fighter.id, tileX, y - 8, 68)?.setAlpha(unlocked ? 1 : 0.34);
       this.add
         .text(tileX, y + 32, isP1 ? "P1" : isP2 ? (this.mode === "ai" || this.mode === "campaign" ? "AI" : "P2") : unlocked ? fighter.displayName.split(" ")[0] : "LOCK", {
           fontFamily: "system-ui, sans-serif",

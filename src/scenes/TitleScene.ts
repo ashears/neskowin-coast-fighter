@@ -1,6 +1,8 @@
 import Phaser from "phaser";
 import { rerenderOnResize } from "../responsive";
+import { drawCharacterSkinOverlay } from "../skins";
 import type { GameMode } from "../types";
+import { getEquippedCharacterSkin } from "../victory";
 
 type TitleMenu = "main" | "start";
 
@@ -49,6 +51,7 @@ export class TitleScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     this.add.image(245, 390, "fighter-proposal-rock").setDisplaySize(355, 265).setAngle(-8);
+    drawCharacterSkinOverlay(this, getEquippedCharacterSkin("proposal-rock"), "proposal-rock", 245, 390, 355)?.setAngle(-8);
     this.add.image(width - 240, 382, "fighter-chelan").setDisplaySize(370, 222).setAngle(8);
     this.add.text(width / 2, 286, this.activeMenu === "main" ? "MAIN MENU" : "START GAME", {
       fontFamily: "system-ui, sans-serif",
@@ -62,7 +65,7 @@ export class TitleScene extends Phaser.Scene {
     if (this.activeMenu === "main") {
       this.addButton(width / 2 - 300, 430, "Start Game", () => this.showStartMenu(), 260, 88, -4);
       this.addButton(width / 2, 430, "View Characters", () => this.scene.start("CharacterViewerScene"), 290, 88, 0);
-      this.addButton(width / 2 + 300, 430, "Victory Store", () => this.scene.start("VictoryStoreScene"), 270, 88, 4);
+      this.addButton(width / 2 + 300, 430, "Store", () => this.scene.start("VictoryStoreScene"), 270, 88, 4);
     } else {
       this.addButton(width / 2 - 290, 430, "Campaign", () => this.scene.start("CampaignSelectScene"), 255, 88, -5);
       this.addButton(width / 2, 430, "Single Battle", () => this.startMode("ai"), 285, 88, 0);
