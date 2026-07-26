@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 
-export type CharacterSkinId = "go-ducks-hat" | "batman-skin";
+export type CharacterSkinId = "go-ducks-hat" | "batman-skin" | "proposal-rock-straw-hat-pirate";
 
 export interface CharacterSkinConfig {
   id: CharacterSkinId;
@@ -49,6 +49,22 @@ export const characterSkins: CharacterSkinConfig[] = [
       offsetY: 0,
       widthRatio: 1,
       heightRatio: 0.6,
+    },
+  },
+  {
+    id: "proposal-rock-straw-hat-pirate",
+    displayName: "Straw Hat Pirate",
+    description: "A straw-hat pirate outfit for Proposal Rock, with a red vest, sash, blue shorts, and sandals.",
+    fighterId: "proposal-rock",
+    price: 300,
+    textureKey: "skin-proposal-rock-straw-hat-pirate",
+    assetPath: "assets/skins/proposal-rock-straw-hat-pirate.svg",
+    accent: 0xe43f2e,
+    placement: {
+      offsetX: 0,
+      offsetY: 0,
+      widthRatio: 1,
+      heightRatio: 0.75,
     },
   },
 ];

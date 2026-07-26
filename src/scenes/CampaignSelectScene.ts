@@ -135,11 +135,33 @@ export class CampaignSelectScene extends Phaser.Scene {
     graphics.lineStyle(6, 0x9b111e, 0.82);
     graphics.strokeRoundedRect(x + 4, y + 4, width - 8, height - 8, 18);
 
-    for (let index = 0; index < 8; index += 1) {
-      const fogY = y + 48 + index * 52;
-      const fog = this.add.rectangle(x + width / 2, fogY, width * 0.88, 18, index % 2 === 0 ? 0x36111c : 0x0b0b12, 0.22).setDepth(7);
-      fog.setAngle(index % 2 === 0 ? -2 : 2);
-      this.tweens.add({ targets: fog, x: fog.x + (index % 2 === 0 ? 38 : -38), alpha: 0.34, duration: 1600 + index * 90, yoyo: true, repeat: -1, ease: "Sine.InOut" });
+    for (let index = 0; index < 12; index += 1) {
+      const fogY = y + 44 + index * 36;
+      const pieces: Phaser.GameObjects.Ellipse[] = [];
+      for (let piece = 0; piece < 5; piece += 1) {
+        const fog = this.add
+          .ellipse(
+            x + width * 0.14 + piece * width * 0.18 + Phaser.Math.Between(-28, 28),
+            fogY + Phaser.Math.Between(-8, 8),
+            width * Phaser.Math.FloatBetween(0.16, 0.3),
+            Phaser.Math.Between(28, 58),
+            Phaser.Utils.Array.GetRandom([0x100d15, 0x21101a, 0x34121e, 0x06070d]),
+            Phaser.Math.FloatBetween(0.1, 0.2),
+          )
+          .setDepth(7)
+          .setBlendMode(Phaser.BlendModes.ADD);
+        pieces.push(fog);
+      }
+      this.tweens.add({
+        targets: pieces,
+        x: `+=${index % 2 === 0 ? Phaser.Math.Between(24, 58) : -Phaser.Math.Between(24, 58)}`,
+        scaleX: 1.12,
+        alpha: Phaser.Math.FloatBetween(0.16, 0.28),
+        duration: 1700 + index * 90,
+        yoyo: true,
+        repeat: -1,
+        ease: "Sine.InOut",
+      });
     }
 
     const eyePositions = [

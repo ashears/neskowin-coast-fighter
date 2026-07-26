@@ -2,7 +2,8 @@ import Phaser from "phaser";
 import { rerenderOnResize } from "../responsive";
 import { drawCharacterSkinOverlay } from "../skins";
 import type { GameMode } from "../types";
-import { getModSettings, setRainbowFireworkMode, setScaryMode } from "../mods";
+import { getModSettings, setDamageMultiplier, setInfiniteHealth, setRainbowFireworkMode, setScaryMode, setSpeedMultiplier } from "../mods";
+import type { DamageMultiplier, SpeedMultiplier } from "../mods";
 import { getEquippedCharacterSkin, grantVictoryCoins } from "../victory";
 
 type TitleMenu = "main" | "start" | "mod";
@@ -81,7 +82,7 @@ export class TitleScene extends Phaser.Scene {
     }
 
     this.add
-      .text(width / 2, height - 76, "WASD/F/G/H/Shift    Arrows/J/K/L/Slash    Online rooms work across web devices", {
+      .text(width / 2, height - 34, "P1: WASD or solo arrows + F/G/H    Local P2: Arrows + J/K/L    Online rooms work across web devices", {
         fontFamily: "system-ui, sans-serif",
         fontSize: "21px",
         color: "#f4f0e8",
@@ -124,25 +125,69 @@ export class TitleScene extends Phaser.Scene {
 
   private renderModMenu(width: number) {
     const settings = getModSettings();
-    this.addButton(width / 2 - 330, 420, "500 Coins", () => {
-      const progress = grantVictoryCoins(500);
-      this.modNotice = `Added 500 coins. Balance ${progress.coins}`;
-      this.render();
-    }, 255, 82, -3);
-    this.addButton(width / 2, 420, settings.rainbowFireworkMode ? "Rainbow Firework Mode: ON" : "Rainbow Firework Mode", () => {
-      const next = setRainbowFireworkMode(!getModSettings().rainbowFireworkMode);
-      this.modNotice = next.rainbowFireworkMode ? "Rainbow firework mode enabled" : "Rainbow firework mode disabled";
-      this.render();
-    }, 390, 82, 0, 25);
-    this.addButton(width / 2 + 330, 420, settings.scaryMode ? "Scary Mode: ON" : "Scary Mode", () => {
-      const next = setScaryMode(!getModSettings().scaryMode);
-      this.modNotice = next.scaryMode ? "Scary mode enabled" : "Scary mode disabled";
-      this.render();
-    }, 255, 82, 3);
-    this.addButton(width / 2, 532, "Back", () => this.showMainMenu(), 170, 62, 0);
+    const damageMultipliers: DamageMultiplier[] = [2, 3, 5, 10, 25];
+    const speedMultipliers: SpeedMultiplier[] = [1.5, 2, 3, 5];
+    const modButtons = [
+      {
+        label: "500 Coins",
+        onClick: () => {
+          const progress = grantVictoryCoins(500);
+          this.modNotice = `Added 500 coins. Balance ${progress.coins}`;
+        },
+      },
+      {
+        label: settings.rainbowFireworkMode ? "Rainbow Firework: ON" : "Rainbow Firework",
+        onClick: () => {
+          const next = setRainbowFireworkMode(!getModSettings().rainbowFireworkMode);
+          this.modNotice = next.rainbowFireworkMode ? "Rainbow firework mode enabled" : "Rainbow firework mode disabled";
+        },
+      },
+      {
+        label: settings.scaryMode ? "Scary Mode: ON" : "Scary Mode",
+        onClick: () => {
+          const next = setScaryMode(!getModSettings().scaryMode);
+          this.modNotice = next.scaryMode ? "Scary mode enabled" : "Scary mode disabled";
+        },
+      },
+      {
+        label: settings.infiniteHealth ? "Infinite Health: ON" : "Infinite Health",
+        onClick: () => {
+          const next = setInfiniteHealth(!getModSettings().infiniteHealth);
+          this.modNotice = next.infiniteHealth ? "Infinite health enabled" : "Infinite health disabled";
+        },
+      },
+      ...damageMultipliers.map((multiplier) => ({
+        label: settings.damageMultiplier === multiplier ? `${multiplier}x Damage: ON` : `${multiplier}x Damage`,
+        onClick: () => {
+          setDamageMultiplier(multiplier);
+          this.modNotice = `${multiplier}x damage enabled`;
+        },
+      })),
+      ...speedMultipliers.map((multiplier) => ({
+        label: settings.speedMultiplier === multiplier ? `${multiplier}x Speed: ON` : `${multiplier}x Speed`,
+        onClick: () => {
+          setSpeedMultiplier(multiplier);
+          this.modNotice = `${multiplier}x speed enabled`;
+        },
+      })),
+    ];
+
+    modButtons.forEach((buttonConfig, index) => {
+      const columns = 4;
+      const col = index % columns;
+      const row = Math.floor(index / columns);
+      const x = width / 2 + (col - 1.5) * 250;
+      const y = 356 + row * 72;
+      this.addButton(x, y, buttonConfig.label, () => {
+        buttonConfig.onClick();
+        this.render();
+      }, 230, 56, col === 0 ? -2 : col === columns - 1 ? 2 : 0, 20);
+    });
+
+    this.addButton(width / 2, 654, "Back", () => this.showMainMenu(), 170, 56, 0, 28);
     if (this.modNotice) {
       this.add
-        .text(width / 2, 596, this.modNotice, {
+        .text(width / 2, 324, this.modNotice, {
           fontFamily: "system-ui, sans-serif",
           fontSize: "20px",
           color: "#fff7e6",

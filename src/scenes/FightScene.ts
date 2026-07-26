@@ -165,6 +165,19 @@ interface DuckMascotMotorcycle {
   knockback: number;
 }
 
+interface ScaryGhost {
+  object: Phaser.GameObjects.Container;
+  body: Phaser.GameObjects.Ellipse;
+  mouth: Phaser.GameObjects.Ellipse;
+  velocityX: number;
+  velocityY: number;
+  radius: number;
+  damage: number;
+  knockback: number;
+  nextHitAt: number;
+  expiresAt: number;
+}
+
 interface RuntimeFighter {
   config: FighterConfig;
   sprite: Phaser.Physics.Arcade.Sprite;
@@ -244,6 +257,8 @@ const SMASH_BLAST_BOTTOM = 1040;
 const SMASH_RESPAWN_MS = 920;
 const SMASH_DAMAGE_BAR_CAP = 180;
 const SMASH_KNOCKBACK_DAMAGE_SCALE = 0.009;
+const SCARY_GHOST_DAMAGE = 8;
+const SCARY_GHOST_HIT_COOLDOWN_MS = 760;
 
 interface ArenaPlatform {
   x: number;
@@ -301,6 +316,9 @@ export class FightScene extends Phaser.Scene {
   private onlineStatusText?: Phaser.GameObjects.Text;
   private onlineCleanup?: () => void;
   private rainbowFireworkEvent?: Phaser.Time.TimerEvent;
+  private scaryModeActive = false;
+  private scaryGhosts: ScaryGhost[] = [];
+  private nextScaryGhostAt = 0;
 
   constructor() {
     super("FightScene");
@@ -330,6 +348,9 @@ export class FightScene extends Phaser.Scene {
     this.lastOnlineStateAt = 0;
     this.onlineStatusText = undefined;
     this.rainbowFireworkEvent = undefined;
+    this.scaryModeActive = false;
+    this.scaryGhosts = [];
+    this.nextScaryGhostAt = 0;
   }
 
   create() {
@@ -428,6 +449,7 @@ export class FightScene extends Phaser.Scene {
 
   private applyBattleModEffects() {
     const settings = getModSettings();
+    this.scaryModeActive = settings.scaryMode;
     if (settings.scaryMode) this.drawScaryBattleMode();
     this.syncRainbowFireworks(settings.rainbowFireworkMode);
   }
@@ -438,26 +460,7 @@ export class FightScene extends Phaser.Scene {
     const bloodMoon = this.add.circle(width - 132, 132, 54, 0x9b111e, 0.52).setDepth(36).setScrollFactor(0).setBlendMode(Phaser.BlendModes.ADD);
     this.tweens.add({ targets: bloodMoon, scale: 1.18, alpha: 0.34, duration: 1100, yoyo: true, repeat: -1, ease: "Sine.InOut" });
 
-    for (let index = 0; index < 10; index += 1) {
-      const fog = this.add.rectangle(
-        width / 2,
-        height - 78 - index * 42,
-        width * Phaser.Math.FloatBetween(0.58, 1.08),
-        Phaser.Math.Between(14, 28),
-        index % 2 === 0 ? 0x35111a : 0x111018,
-        0.2,
-      );
-      fog.setDepth(36).setScrollFactor(0).setAngle(index % 2 === 0 ? -2 : 2);
-      this.tweens.add({
-        targets: fog,
-        x: fog.x + (index % 2 === 0 ? 64 : -64),
-        alpha: 0.34,
-        duration: 1400 + index * 120,
-        yoyo: true,
-        repeat: -1,
-        ease: "Sine.InOut",
-      });
-    }
+    for (let index = 0; index < 18; index += 1) this.createScaryFogBank(width / 2, height - 54 - index * 28, width, index);
 
     const eyes = [
       { x: 154, y: 172 },
@@ -472,7 +475,147 @@ export class FightScene extends Phaser.Scene {
     });
 
     this.time.addEvent({ delay: 900, loop: true, callback: () => this.createScaryLightning() });
+    this.time.addEvent({ delay: 1250, loop: true, callback: () => this.spawnScaryGhost(this.time.now) });
     overlay.setAlpha(0.42);
+  }
+
+  private createScaryFogBank(centerX: number, y: number, width: number, index: number) {
+    const pieces: Phaser.GameObjects.Ellipse[] = [];
+    const pieceCount = Phaser.Math.Between(4, 7);
+    for (let piece = 0; piece < pieceCount; piece += 1) {
+      const localX = centerX - width * 0.42 + (piece / Math.max(1, pieceCount - 1)) * width * 0.84 + Phaser.Math.Between(-42, 42);
+      const fog = this.add
+        .ellipse(
+          localX,
+          y + Phaser.Math.Between(-10, 10),
+          width * Phaser.Math.FloatBetween(0.16, 0.34),
+          Phaser.Math.Between(34, 74),
+          Phaser.Utils.Array.GetRandom([0x130f18, 0x21101a, 0x2b121e, 0x07080d]),
+          Phaser.Math.FloatBetween(0.08, 0.18),
+        )
+        .setDepth(36)
+        .setScrollFactor(0)
+        .setBlendMode(Phaser.BlendModes.ADD);
+      pieces.push(fog);
+    }
+    this.tweens.add({
+      targets: pieces,
+      x: `+=${index % 2 === 0 ? Phaser.Math.Between(38, 92) : -Phaser.Math.Between(38, 92)}`,
+      scaleX: 1.18,
+      alpha: Phaser.Math.FloatBetween(0.15, 0.3),
+      duration: 1700 + index * 95,
+      yoyo: true,
+      repeat: -1,
+      ease: "Sine.InOut",
+    });
+  }
+
+  private spawnScaryGhost(time: number) {
+    if (!this.scaryModeActive || this.roundOver || this.isOnlineGuest() || this.proposalRockBossActive) return;
+    const { width, height } = this.scale;
+    const fromLeft = Math.random() < 0.5;
+    const worldLeft = this.arenaLeft();
+    const worldRight = this.arenaRight();
+    const x = this.isSmashArena() ? (fromLeft ? worldLeft - 90 : worldRight + 90) : fromLeft ? -90 : width + 90;
+    const y = Phaser.Math.Between(170, Math.floor(this.fightFloorY(height) - 92));
+    const body = this.add.ellipse(0, 0, 70, 92, 0xd8e0ff, 0.34).setStrokeStyle(3, 0xffffff, 0.48);
+    const veil = this.add.ellipse(0, 26, 82, 54, 0x746a9e, 0.16);
+    const leftEye = this.add.ellipse(-16, -14, 10, 20, 0xff2020, 0.9).setBlendMode(Phaser.BlendModes.ADD);
+    const rightEye = this.add.ellipse(16, -14, 10, 20, 0xff2020, 0.9).setBlendMode(Phaser.BlendModes.ADD);
+    const mouth = this.add.ellipse(0, 18, 18, 30, 0x050307, 0.82);
+    const clawLeft = this.add.triangle(-30, 34, 0, 0, 22, 0, 8, 28, 0xd8e0ff, 0.22);
+    const clawRight = this.add.triangle(30, 34, 0, 0, -22, 0, -8, 28, 0xd8e0ff, 0.22);
+    const object = this.add
+      .container(x, y, [veil, body, leftEye, rightEye, mouth, clawLeft, clawRight])
+      .setDepth(41)
+      .setAlpha(0.84)
+      .setBlendMode(Phaser.BlendModes.ADD);
+
+    this.tweens.add({ targets: object, scaleX: 1.14, scaleY: 0.88, duration: 420, yoyo: true, repeat: -1, ease: "Sine.InOut" });
+    this.tweens.add({ targets: [leftEye, rightEye, mouth], alpha: 0.28, duration: 180, yoyo: true, repeat: -1, ease: "Stepped" });
+
+    this.scaryGhosts.push({
+      object,
+      body,
+      mouth,
+      velocityX: (fromLeft ? 1 : -1) * Phaser.Math.Between(135, 210),
+      velocityY: Phaser.Math.Between(-34, 34),
+      radius: 72,
+      damage: SCARY_GHOST_DAMAGE,
+      knockback: 420,
+      nextHitAt: time + 420,
+      expiresAt: time + 8200,
+    });
+  }
+
+  private updateScaryGhosts(time: number) {
+    if (!this.scaryModeActive || this.isOnlineGuest()) return;
+    if (!this.proposalRockBossActive && time >= this.nextScaryGhostAt) {
+      this.spawnScaryGhost(time);
+      this.nextScaryGhostAt = time + Phaser.Math.Between(1800, 2900);
+    }
+
+    const delta = this.game.loop.delta / 1000;
+    this.scaryGhosts = this.scaryGhosts.filter((ghost) => {
+      ghost.object.x += ghost.velocityX * delta;
+      ghost.object.y += (ghost.velocityY + Math.sin(time / 260 + ghost.object.x * 0.01) * 58) * delta;
+      ghost.object.rotation = Math.sin(time / 360 + ghost.object.x * 0.004) * 0.08;
+      ghost.body.setAlpha(0.24 + Math.sin(time / 95) * 0.1);
+      ghost.mouth.setScale(1, 0.9 + Math.sin(time / 72) * 0.22);
+
+      for (const target of [this.playerOne, this.playerTwo]) {
+        if (this.oceanBossActive && target === this.playerTwo) continue;
+        if (this.isSmashArena() && time < target.respawningUntil) continue;
+        if (time < ghost.nextHitAt) continue;
+
+        const xDistance = Math.abs(target.sprite.x - ghost.object.x);
+        const yDistance = Math.abs(target.sprite.y - ghost.object.y);
+        if (xDistance <= ghost.radius && yDistance <= ghost.radius + 48) {
+          ghost.nextHitAt = time + SCARY_GHOST_HIT_COOLDOWN_MS;
+          const shielded = this.absorbDamageWithShield(target, ghost.damage);
+          const pushDirection = target.sprite.x < ghost.object.x ? -1 : 1;
+          this.applyKnockback(target, pushDirection, ghost.knockback, shielded ? -80 : -230, shielded ? 0.34 : 1);
+          this.createScaryGhostHit(target.sprite.x, target.sprite.y - 36);
+          this.flashMoveLabel(target.sprite.x, target.sprite.y - 142, "HAUNTED");
+          this.cameras.main.shake(105, 0.007);
+        }
+      }
+
+      const offLeft = ghost.object.x < this.arenaLeft() - 260;
+      const offRight = ghost.object.x > this.arenaRight() + 260;
+      const offVertical = ghost.object.y < -180 || ghost.object.y > this.scale.height + 180;
+      if (time >= ghost.expiresAt || offLeft || offRight || offVertical) {
+        ghost.object.destroy();
+        return false;
+      }
+      return true;
+    });
+  }
+
+  private createScaryGhostHit(x: number, y: number) {
+    const ring = this.add.circle(x, y, 18, 0xd8e0ff, 0.26).setStrokeStyle(5, 0xff2020, 0.72).setDepth(42).setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({
+      targets: ring,
+      radius: 86,
+      alpha: 0,
+      duration: 360,
+      ease: "Quad.Out",
+      onComplete: () => ring.destroy(),
+    });
+
+    for (let index = 0; index < 9; index += 1) {
+      const wisp = this.add.ellipse(x, y, Phaser.Math.Between(12, 28), Phaser.Math.Between(16, 38), 0xcdd4ff, 0.36).setDepth(41).setBlendMode(Phaser.BlendModes.ADD);
+      this.tweens.add({
+        targets: wisp,
+        x: x + Phaser.Math.Between(-96, 96),
+        y: y - Phaser.Math.Between(22, 108),
+        alpha: 0,
+        scaleX: 1.8,
+        duration: Phaser.Math.Between(260, 540),
+        ease: "Cubic.Out",
+        onComplete: () => wisp.destroy(),
+      });
+    }
   }
 
   private createScaryLightning() {
@@ -756,6 +899,7 @@ export class FightScene extends Phaser.Scene {
     this.updateDuckFootballs(time);
     this.updateDuckRunners(time);
     this.updateDuckMascots(time);
+    this.updateScaryGhosts(time);
     if (this.isSmashArena()) this.updateSmashArenaCamera();
     if (this.isSmashArena()) this.checkSmashBlastZones(time);
     this.clampActiveFightersToArena();
@@ -998,6 +1142,10 @@ export class FightScene extends Phaser.Scene {
       p1Right: Phaser.Input.Keyboard.KeyCodes.D,
       p1Up: Phaser.Input.Keyboard.KeyCodes.W,
       p1Down: Phaser.Input.Keyboard.KeyCodes.S,
+      p1AltLeft: Phaser.Input.Keyboard.KeyCodes.LEFT,
+      p1AltRight: Phaser.Input.Keyboard.KeyCodes.RIGHT,
+      p1AltUp: Phaser.Input.Keyboard.KeyCodes.UP,
+      p1AltDown: Phaser.Input.Keyboard.KeyCodes.DOWN,
       p1Light: Phaser.Input.Keyboard.KeyCodes.F,
       p1Heavy: Phaser.Input.Keyboard.KeyCodes.G,
       p1Special: Phaser.Input.Keyboard.KeyCodes.H,
@@ -1019,10 +1167,13 @@ export class FightScene extends Phaser.Scene {
       }
       return;
     }
-    this.playerOne.keyboardControls.left = this.keys.p1Left.isDown;
-    this.playerOne.keyboardControls.right = this.keys.p1Right.isDown;
-    this.playerOne.keyboardControls.up = Phaser.Input.Keyboard.JustDown(this.keys.p1Up);
-    this.playerOne.keyboardControls.down = this.keys.p1Down.isDown;
+    const allowPlayerOneArrowMovement = this.selection.mode !== "local";
+    this.playerOne.keyboardControls.left = this.keys.p1Left.isDown || (allowPlayerOneArrowMovement && this.keys.p1AltLeft.isDown);
+    this.playerOne.keyboardControls.right = this.keys.p1Right.isDown || (allowPlayerOneArrowMovement && this.keys.p1AltRight.isDown);
+    this.playerOne.keyboardControls.up =
+      Phaser.Input.Keyboard.JustDown(this.keys.p1Up) ||
+      (allowPlayerOneArrowMovement && Phaser.Input.Keyboard.JustDown(this.keys.p1AltUp));
+    this.playerOne.keyboardControls.down = this.keys.p1Down.isDown || (allowPlayerOneArrowMovement && this.keys.p1AltDown.isDown);
     this.playerOne.keyboardControls.block = false;
     this.playerOne.keyboardControls.light = Phaser.Input.Keyboard.JustDown(this.keys.p1Light);
     this.playerOne.keyboardControls.heavy =
@@ -1411,6 +1562,9 @@ export class FightScene extends Phaser.Scene {
     this.duckRunners = [];
     this.duckMascots.forEach((mascot) => mascot.object.destroy());
     this.duckMascots = [];
+    this.scaryGhosts.forEach((ghost) => ghost.object.destroy());
+    this.scaryGhosts = [];
+    this.nextScaryGhostAt = this.time.now + 700;
     this.oceanWaves.forEach((wave) => this.destroyOceanWave(wave));
     this.oceanWaves = [];
     this.nextOceanWaveAt = this.time.now + 900;
@@ -1453,7 +1607,8 @@ export class FightScene extends Phaser.Scene {
     this.syncFighterAttachments(actor);
     actor.isBlocking = false;
 
-    const speed = actor.config.speed;
+    actor.sprite.setMaxVelocity(Math.max(DEFAULT_FIGHTER_MAX_VELOCITY_X, this.getModdedSpeed(actor, actor.config.speed)), DEFAULT_FIGHTER_MAX_VELOCITY_Y);
+    const speed = this.getModdedSpeed(actor, actor.config.speed);
     if (controls.left && !controls.right) actor.sprite.setVelocityX(-speed);
     else if (controls.right && !controls.left) actor.sprite.setVelocityX(speed);
 
@@ -2053,7 +2208,7 @@ export class FightScene extends Phaser.Scene {
 
   private applyDamage(target: RuntimeFighter, attacker: RuntimeFighter, kind: AttackKind) {
     const attack = attacker.config.attacks[kind];
-    const shielded = this.absorbDamageWithShield(target, attack.damage);
+    const shielded = this.absorbDamageWithShield(target, this.getModdedDamage(attacker, attack.damage));
     if (this.oceanBossActive && target === this.playerTwo) {
       this.createOceanSplash(target.sprite.x + attacker.facing * Phaser.Math.Between(24, 90), target.sprite.y - 70, kind === "special" ? "cross" : "breaker");
       this.flashMoveLabel(target.sprite.x, target.sprite.y - 158, kind === "special" ? "TIDE BROKEN" : "SPLASH");
@@ -2072,7 +2227,18 @@ export class FightScene extends Phaser.Scene {
     target.sprite.setVelocityY(baseVelocityY * (this.isSmashArena() && baseVelocityY < 0 ? Phaser.Math.Clamp(percentScale, 1, 2.35) : 1));
   }
 
+  private getModdedDamage(attacker: RuntimeFighter, rawDamage: number) {
+    const { damageMultiplier } = getModSettings();
+    return attacker === this.playerOne ? rawDamage * damageMultiplier : rawDamage;
+  }
+
+  private getModdedSpeed(actor: RuntimeFighter, rawSpeed: number) {
+    const { speedMultiplier } = getModSettings();
+    return actor === this.playerOne ? rawSpeed * speedMultiplier : rawSpeed;
+  }
+
   private absorbDamageWithShield(target: RuntimeFighter, rawDamage: number) {
+    if (target === this.playerOne && getModSettings().infiniteHealth) return false;
     const defendedDamage = rawDamage * target.config.defense;
     if (this.isSmashArena()) target.health += Math.round(defendedDamage);
     else target.health = Math.max(0, target.health - Math.round(defendedDamage));
@@ -2143,7 +2309,7 @@ export class FightScene extends Phaser.Scene {
 
       if (armed && xDistance <= mine.radius && yDistance <= 76) {
         mine.triggered = true;
-        const shielded = this.absorbDamageWithShield(target, mine.damage);
+        const shielded = this.absorbDamageWithShield(target, this.getModdedDamage(mine.owner, mine.damage));
         const pushDirection = target.sprite.x < mine.object.x ? -1 : 1;
         this.applyKnockback(target, pushDirection, mine.knockback, shielded ? -190 : -330, shielded ? 0.34 : 1);
         this.createStarfishMineBurst(mine.object.x, mine.object.y);
@@ -2258,7 +2424,7 @@ export class FightScene extends Phaser.Scene {
       const yDistance = Math.abs(projectile.object.y - target.sprite.y);
       if (xDistance <= projectile.radius && yDistance <= projectile.radius + 58) {
         projectile.hit = true;
-        const shielded = this.absorbDamageWithShield(target, projectile.damage);
+        const shielded = this.absorbDamageWithShield(target, this.getModdedDamage(projectile.owner, projectile.damage));
         this.applyKnockback(target, Math.sign(projectile.velocityX), projectile.knockback, shielded ? -90 : -250, shielded ? 0.35 : 1);
         this.createProjectilePop(projectile.object.x, projectile.object.y, projectile.kind);
         projectile.object.destroy();
@@ -2390,7 +2556,7 @@ export class FightScene extends Phaser.Scene {
 
       if (!rock.hitActors.has(target) && xDistance <= rock.radius && yDistance <= 126) {
         rock.hitActors.add(target);
-        const shielded = this.absorbDamageWithShield(target, rock.damage);
+        const shielded = this.absorbDamageWithShield(target, this.getModdedDamage(rock.owner, rock.damage));
         this.applyKnockback(target, Math.sign(rock.velocityX), rock.knockback, shielded ? -100 : -260, shielded ? 0.34 : 1);
         this.createRollingRockHit(rock.object.x, rock.object.y);
         this.flashMoveLabel(target.sprite.x, target.sprite.y - 128, "BOWLED");
@@ -2517,7 +2683,7 @@ export class FightScene extends Phaser.Scene {
         const travelRatio = Phaser.Math.Clamp(football.distanceTravelled / 720, 0, 1);
         const damage = Math.round(football.damage + travelRatio * 13);
         const knockback = football.knockback + travelRatio * 260;
-        const shielded = this.absorbDamageWithShield(target, damage);
+        const shielded = this.absorbDamageWithShield(target, this.getModdedDamage(football.owner, damage));
         this.applyKnockback(target, Math.sign(football.velocityX), knockback, shielded ? -120 : -300, shielded ? 0.35 : 1);
         this.createDuckFootballHit(football.object.x, football.object.y, travelRatio);
         this.flashMoveLabel(target.sprite.x, target.sprite.y - 132, travelRatio > 0.72 ? "BOMB" : "COMPLETE");
@@ -2609,7 +2775,7 @@ export class FightScene extends Phaser.Scene {
       const yDistance = Math.abs(runner.object.y - target.sprite.y);
       if (!runner.hit && xDistance <= 66 && yDistance <= 116) {
         runner.hit = true;
-        const shielded = this.absorbDamageWithShield(target, runner.damage);
+        const shielded = this.absorbDamageWithShield(target, this.getModdedDamage(runner.owner, runner.damage));
         this.applyKnockback(target, Math.sign(runner.velocityX), runner.knockback, shielded ? -90 : -230, shielded ? 0.34 : 1);
         this.createDuckRunnerHit(runner.object.x, runner.object.y + 32);
         this.flashMoveLabel(target.sprite.x, target.sprite.y - 132, "TRUCKED");
@@ -2719,7 +2885,7 @@ export class FightScene extends Phaser.Scene {
       const yDistance = Math.abs(mascot.object.y - target.sprite.y);
       if (time >= mascot.nextHitAt && xDistance <= 92 && yDistance <= 112) {
         mascot.nextHitAt = time + 850;
-        const shielded = this.absorbDamageWithShield(target, mascot.damage);
+        const shielded = this.absorbDamageWithShield(target, this.getModdedDamage(mascot.owner, mascot.damage));
         const pushDirection = mascot.object.x < target.sprite.x ? 1 : -1;
         this.applyKnockback(target, pushDirection, mascot.knockback, shielded ? -80 : -190, shielded ? 0.32 : 1);
         this.createDuckMascotHit(mascot.object.x, mascot.object.y + 22);
