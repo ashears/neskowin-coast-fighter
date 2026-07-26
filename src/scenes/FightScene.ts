@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { getFighter } from "../fighters";
 import { getLevel } from "../levels";
+import { getModSettings } from "../mods";
 import { onlineSession, type MatchNetState } from "../online";
 import { drawCharacterSkinOverlay, type CharacterSkinConfig } from "../skins";
 import type { AttackKind, FighterConfig, MatchResult, MatchSelection } from "../types";
@@ -182,6 +183,7 @@ interface RuntimeFighter {
   rounds: number;
   facing: 1 | -1;
   isBlocking: boolean;
+  dropThroughUntil: number;
   attack?: AttackState;
   cooldowns: Record<AttackKind, number>;
   controls: ButtonState;
@@ -203,7 +205,7 @@ const blankControls = (): ButtonState => ({
 });
 
 const COOLDOWN_HUD_ATTACK_KINDS: AttackKind[] = ["light", "heavy"];
-const PROPOSAL_TRASH_ACTIONS: ControlAction[] = ["left", "right", "up", "down", "block", "light", "heavy", "special"];
+const PROPOSAL_TRASH_ACTIONS: ControlAction[] = ["left", "right", "up", "down", "light", "heavy", "special"];
 const PROPOSAL_TRASH_DAMAGE_TO_BOSS = 18;
 const PROPOSAL_TRASH_DAMAGE_TO_PLAYER = 12;
 const PROPOSAL_TRASH_RESPONSE_MS = 3000;
@@ -224,6 +226,8 @@ const FIGHTER_STACK_MAX_POSITION_PUSH = 64;
 const FIGHTER_STACK_LOWER_PUSH_SPEED = 540;
 const FIGHTER_STACK_UPPER_DRIFT_SPEED = 150;
 const FIGHTER_STACK_DOWNWARD_VELOCITY = 190;
+const PLATFORM_DROP_THROUGH_MS = 260;
+const PLATFORM_DROP_THROUGH_SPEED = 220;
 const CHELAN_SLAM_CUTSCENE_MS = 920;
 const DUCK_HEAVY_CHARGE_MAX_MS = 1500;
 const DUCK_HEAVY_MIN_RATIO = 0.18;
@@ -296,6 +300,7 @@ export class FightScene extends Phaser.Scene {
   private lastOnlineStateAt = 0;
   private onlineStatusText?: Phaser.GameObjects.Text;
   private onlineCleanup?: () => void;
+  private rainbowFireworkEvent?: Phaser.Time.TimerEvent;
 
   constructor() {
     super("FightScene");
@@ -324,6 +329,7 @@ export class FightScene extends Phaser.Scene {
     this.proposalBossTimerText = undefined;
     this.lastOnlineStateAt = 0;
     this.onlineStatusText = undefined;
+    this.rainbowFireworkEvent = undefined;
   }
 
   create() {
@@ -351,6 +357,7 @@ export class FightScene extends Phaser.Scene {
       this.ground = this.add.rectangle(width / 2, this.fightFloorY(height), width, GROUND_HEIGHT, 0x4a594e, 1);
       this.physics.add.existing(this.ground, true);
     }
+    this.applyBattleModEffects();
 
     const playerOneConfig = getFighter(this.selection.playerOneId);
     const playerTwoConfig = getFighter(this.selection.playerTwoId);
@@ -394,6 +401,7 @@ export class FightScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.onlineCleanup?.();
       this.onlineCleanup = undefined;
+      this.stopRainbowFireworks();
     });
     this.startRound();
 
@@ -416,6 +424,119 @@ export class FightScene extends Phaser.Scene {
 
   private isSmashArena() {
     return this.selection.levelId === "neskowin" && !this.oceanBossActive && !this.proposalRockBossActive;
+  }
+
+  private applyBattleModEffects() {
+    const settings = getModSettings();
+    if (settings.scaryMode) this.drawScaryBattleMode();
+    this.syncRainbowFireworks(settings.rainbowFireworkMode);
+  }
+
+  private drawScaryBattleMode() {
+    const { width, height } = this.scale;
+    const overlay = this.add.rectangle(width / 2, height / 2, width, height, 0x050307, 0.42).setDepth(35).setScrollFactor(0);
+    const bloodMoon = this.add.circle(width - 132, 132, 54, 0x9b111e, 0.52).setDepth(36).setScrollFactor(0).setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({ targets: bloodMoon, scale: 1.18, alpha: 0.34, duration: 1100, yoyo: true, repeat: -1, ease: "Sine.InOut" });
+
+    for (let index = 0; index < 10; index += 1) {
+      const fog = this.add.rectangle(
+        width / 2,
+        height - 78 - index * 42,
+        width * Phaser.Math.FloatBetween(0.58, 1.08),
+        Phaser.Math.Between(14, 28),
+        index % 2 === 0 ? 0x35111a : 0x111018,
+        0.2,
+      );
+      fog.setDepth(36).setScrollFactor(0).setAngle(index % 2 === 0 ? -2 : 2);
+      this.tweens.add({
+        targets: fog,
+        x: fog.x + (index % 2 === 0 ? 64 : -64),
+        alpha: 0.34,
+        duration: 1400 + index * 120,
+        yoyo: true,
+        repeat: -1,
+        ease: "Sine.InOut",
+      });
+    }
+
+    const eyes = [
+      { x: 154, y: 172 },
+      { x: width - 218, y: 286 },
+      { x: width / 2 + 90, y: 210 },
+      { x: width / 2 - 260, y: 344 },
+    ];
+    eyes.forEach((position, index) => {
+      const leftEye = this.add.ellipse(position.x - 15, position.y, 22, 12, 0xff2020, 0.85).setDepth(37).setScrollFactor(0).setBlendMode(Phaser.BlendModes.ADD);
+      const rightEye = this.add.ellipse(position.x + 15, position.y, 22, 12, 0xff2020, 0.85).setDepth(37).setScrollFactor(0).setBlendMode(Phaser.BlendModes.ADD);
+      this.tweens.add({ targets: [leftEye, rightEye], alpha: 0.12, duration: 360 + index * 80, yoyo: true, repeat: -1, ease: "Stepped" });
+    });
+
+    this.time.addEvent({ delay: 900, loop: true, callback: () => this.createScaryLightning() });
+    overlay.setAlpha(0.42);
+  }
+
+  private createScaryLightning() {
+    const { width } = this.scale;
+    const bolt = this.add.graphics().setDepth(38).setScrollFactor(0);
+    let cursorX = Phaser.Math.Between(100, width - 100);
+    let cursorY = Phaser.Math.Between(38, 96);
+    bolt.lineStyle(4, Phaser.Utils.Array.GetRandom([0xff2020, 0x6d1bff, 0xe8e6ff]), 0.7);
+    bolt.beginPath();
+    bolt.moveTo(cursorX, cursorY);
+    for (let segment = 0; segment < 7; segment += 1) {
+      cursorX += Phaser.Math.Between(-44, 44);
+      cursorY += Phaser.Math.Between(28, 54);
+      bolt.lineTo(cursorX, cursorY);
+    }
+    bolt.strokePath();
+    this.tweens.add({ targets: bolt, alpha: 0, duration: 210, yoyo: true, repeat: 1, onComplete: () => bolt.destroy() });
+  }
+
+  private syncRainbowFireworks(enabled: boolean) {
+    if (!enabled) {
+      this.stopRainbowFireworks();
+      return;
+    }
+
+    if (!this.rainbowFireworkEvent) {
+      this.rainbowFireworkEvent = this.time.addEvent({ delay: 240, loop: true, callback: () => this.createRainbowFireworkBurst() });
+    }
+    for (let index = 0; index < 6; index += 1) {
+      this.time.delayedCall(index * 70, () => this.createRainbowFireworkBurst());
+    }
+  }
+
+  private stopRainbowFireworks() {
+    this.rainbowFireworkEvent?.remove(false);
+    this.rainbowFireworkEvent = undefined;
+  }
+
+  private createRainbowFireworkBurst() {
+    const { width, height } = this.scale;
+    const colors = [0xff2020, 0xff8a00, 0xfff000, 0x43ff4b, 0x00d4ff, 0x2450ff, 0xb030ff];
+    const originX = Phaser.Math.Between(80, width - 80);
+    const originY = Phaser.Math.Between(96, Math.max(116, height - 190));
+    const ring = this.add.circle(originX, originY, 5, Phaser.Utils.Array.GetRandom(colors), 0.46).setDepth(39).setScrollFactor(0).setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({ targets: ring, scale: 9, alpha: 0, duration: 620, ease: "Sine.Out", onComplete: () => ring.destroy() });
+
+    colors.forEach((color, colorIndex) => {
+      for (let sparkIndex = 0; sparkIndex < 3; sparkIndex += 1) {
+        const angle = ((colorIndex * 3 + sparkIndex) / (colors.length * 3)) * Math.PI * 2 + Phaser.Math.FloatBetween(-0.08, 0.08);
+        const distance = Phaser.Math.Between(56, 148);
+        const spark = this.add.star(originX, originY, 5, 3, Phaser.Math.Between(8, 15), color, 0.94).setDepth(39).setScrollFactor(0).setBlendMode(Phaser.BlendModes.ADD);
+        this.tweens.add({
+          targets: spark,
+          x: originX + Math.cos(angle) * distance,
+          y: originY + Math.sin(angle) * distance,
+          angle: Phaser.Math.Between(-260, 260),
+          alpha: 0,
+          scale: 0.25,
+          duration: Phaser.Math.Between(460, 820),
+          ease: "Quad.Out",
+          onComplete: () => spark.destroy(),
+        });
+      }
+    });
   }
 
   private getSpawnX(side: "left" | "right") {
@@ -489,10 +610,18 @@ export class FightScene extends Phaser.Scene {
     const fighterBody = fighter.body as Phaser.Physics.Arcade.Body;
     const platformBody = platform.body as Phaser.Physics.Arcade.StaticBody;
     if (!fighterBody || !platformBody) return false;
+    const actor = this.getActorFromSprite(fighter);
+    if (actor && this.time.now < actor.dropThroughUntil) return false;
     if (fighterBody.velocity.y < 0) return false;
 
     const previousBottom = fighterBody.bottom - Math.max(0, fighterBody.deltaY());
     return previousBottom <= platformBody.top + 8;
+  }
+
+  private getActorFromSprite(sprite: Phaser.Physics.Arcade.Sprite) {
+    if (sprite === this.playerOne?.sprite) return this.playerOne;
+    if (sprite === this.playerTwo?.sprite) return this.playerTwo;
+    return undefined;
   }
 
   private createOceanBossArena() {
@@ -702,6 +831,7 @@ export class FightScene extends Phaser.Scene {
       rounds: 0,
       facing,
       isBlocking: false,
+      dropThroughUntil: 0,
       cooldowns: { light: 0, heavy: 0, special: 0 },
       controls: blankControls(),
       keyboardControls: blankControls(),
@@ -736,15 +866,15 @@ export class FightScene extends Phaser.Scene {
     const { width } = this.scale;
     this.add.rectangle(256, 39, 432, 24, 0x071210, 0.9).setStrokeStyle(2, 0xe8c66b).setScrollFactor(0).setDepth(80);
     this.add.rectangle(width - 256, 39, 432, 24, 0x071210, 0.9).setStrokeStyle(2, 0xe8c66b).setScrollFactor(0).setDepth(80);
-    this.add.rectangle(256, 62, 432, 13, 0x071210, 0.82).setStrokeStyle(1, 0x7ee8ff, 0.72).setScrollFactor(0).setDepth(80);
-    this.add.rectangle(width - 256, 62, 432, 13, 0x071210, 0.82).setStrokeStyle(1, 0x7ee8ff, 0.72).setScrollFactor(0).setDepth(80);
+    this.add.rectangle(256, 62, 432, 13, 0x071210, 0).setVisible(false).setScrollFactor(0).setDepth(80);
+    this.add.rectangle(width - 256, 62, 432, 13, 0x071210, 0).setVisible(false).setScrollFactor(0).setDepth(80);
     this.healthBars = [
       this.add.rectangle(40, 39, 420, 16, this.isSmashArena() ? 0xffb84d : 0x56c271).setOrigin(0, 0.5).setScrollFactor(0).setDepth(81),
       this.add.rectangle(width - 40, 39, 420, 16, this.isSmashArena() ? 0xffb84d : 0x56c271).setOrigin(1, 0.5).setScrollFactor(0).setDepth(81),
     ];
     this.shieldBars = [
-      this.add.rectangle(40, 62, 420, 7, 0x7ee8ff).setOrigin(0, 0.5).setScrollFactor(0).setDepth(81),
-      this.add.rectangle(width - 40, 62, 420, 7, 0x7ee8ff).setOrigin(1, 0.5).setScrollFactor(0).setDepth(81),
+      this.add.rectangle(40, 62, 420, 7, 0x7ee8ff).setOrigin(0, 0.5).setVisible(false).setScrollFactor(0).setDepth(81),
+      this.add.rectangle(width - 40, 62, 420, 7, 0x7ee8ff).setOrigin(1, 0.5).setVisible(false).setScrollFactor(0).setDepth(81),
     ];
     this.healthTexts = [
       this.add
@@ -868,7 +998,6 @@ export class FightScene extends Phaser.Scene {
       p1Right: Phaser.Input.Keyboard.KeyCodes.D,
       p1Up: Phaser.Input.Keyboard.KeyCodes.W,
       p1Down: Phaser.Input.Keyboard.KeyCodes.S,
-      p1Block: Phaser.Input.Keyboard.KeyCodes.SHIFT,
       p1Light: Phaser.Input.Keyboard.KeyCodes.F,
       p1Heavy: Phaser.Input.Keyboard.KeyCodes.G,
       p1Special: Phaser.Input.Keyboard.KeyCodes.H,
@@ -876,7 +1005,6 @@ export class FightScene extends Phaser.Scene {
       p2Right: Phaser.Input.Keyboard.KeyCodes.RIGHT,
       p2Up: Phaser.Input.Keyboard.KeyCodes.UP,
       p2Down: Phaser.Input.Keyboard.KeyCodes.DOWN,
-      p2Block: Phaser.Input.Keyboard.KeyCodes.FORWARD_SLASH,
       p2Light: Phaser.Input.Keyboard.KeyCodes.J,
       p2Heavy: Phaser.Input.Keyboard.KeyCodes.K,
       p2Special: Phaser.Input.Keyboard.KeyCodes.L,
@@ -895,7 +1023,7 @@ export class FightScene extends Phaser.Scene {
     this.playerOne.keyboardControls.right = this.keys.p1Right.isDown;
     this.playerOne.keyboardControls.up = Phaser.Input.Keyboard.JustDown(this.keys.p1Up);
     this.playerOne.keyboardControls.down = this.keys.p1Down.isDown;
-    this.playerOne.keyboardControls.block = this.keys.p1Block.isDown;
+    this.playerOne.keyboardControls.block = false;
     this.playerOne.keyboardControls.light = Phaser.Input.Keyboard.JustDown(this.keys.p1Light);
     this.playerOne.keyboardControls.heavy =
       this.playerOne.config.id === "duck-flag" ? this.keys.p1Heavy.isDown : Phaser.Input.Keyboard.JustDown(this.keys.p1Heavy);
@@ -908,7 +1036,7 @@ export class FightScene extends Phaser.Scene {
       this.playerTwo.keyboardControls.right = this.keys.p2Right.isDown;
       this.playerTwo.keyboardControls.up = Phaser.Input.Keyboard.JustDown(this.keys.p2Up);
       this.playerTwo.keyboardControls.down = this.keys.p2Down.isDown;
-      this.playerTwo.keyboardControls.block = this.keys.p2Block.isDown;
+      this.playerTwo.keyboardControls.block = false;
       this.playerTwo.keyboardControls.light = Phaser.Input.Keyboard.JustDown(this.keys.p2Light);
       this.playerTwo.keyboardControls.heavy =
         this.playerTwo.config.id === "duck-flag" ? this.keys.p2Heavy.isDown : Phaser.Input.Keyboard.JustDown(this.keys.p2Heavy);
@@ -924,7 +1052,7 @@ export class FightScene extends Phaser.Scene {
       right: primary.right || secondary.right,
       up: primary.up || secondary.up,
       down: primary.down || secondary.down,
-      block: primary.block || secondary.block,
+      block: false,
       light: primary.light || secondary.light,
       heavy: primary.heavy || secondary.heavy,
       special: primary.special || secondary.special,
@@ -947,7 +1075,7 @@ export class FightScene extends Phaser.Scene {
     this.addTouchButton(84, height - 102, "◀", this.playerOne.touchControls, "left", "MOVE");
     this.addTouchButton(188, height - 102, "▶", this.playerOne.touchControls, "right", "MOVE");
     this.addTouchButton(136, height - 202, "▲", this.playerOne.touchControls, "up", "JUMP", true);
-    this.addTouchButton(136, height - 68, "", this.playerOne.touchControls, "block", "BLOCK");
+    this.addTouchButton(136, height - 68, "▼", this.playerOne.touchControls, "down", "DOWN", true);
 
     this.addTouchButton(width - 276, height - 102, "L", this.playerOne.touchControls, "light", "LIGHT", true);
     this.addTouchButton(width - 170, height - 102, "H", this.playerOne.touchControls, "heavy", "HEAVY", this.playerOne.config.id !== "duck-flag");
@@ -990,8 +1118,8 @@ export class FightScene extends Phaser.Scene {
     pulse = false,
   ) {
     const isAttack = action === "light" || action === "heavy" || action === "special";
-    const baseColor = isAttack ? 0xffb84d : action === "block" ? 0x9bc2ff : 0xf2d37a;
-    const activeColor = isAttack ? 0xffef7d : action === "block" ? 0xd4e7ff : 0xffeba8;
+    const baseColor = isAttack ? 0xffb84d : 0xf2d37a;
+    const activeColor = isAttack ? 0xffef7d : 0xffeba8;
     const ring = this.add
       .circle(x, y, 47, 0x102421, 0.42)
       .setStrokeStyle(3, 0xfff2ba, 0.42)
@@ -1002,7 +1130,7 @@ export class FightScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setInteractive({ useHandCursor: true });
     const icon =
-      isAttack || action === "block"
+      isAttack
         ? this.createTouchButtonIcon(x, y, action)
         : this.add
             .text(x, y, label, {
@@ -1066,15 +1194,6 @@ export class FightScene extends Phaser.Scene {
   private createTouchButtonIcon(x: number, y: number, action: ControlAction, fighterId = this.playerOne.config.id) {
     const icon = this.add.graphics().setScrollFactor(0);
     icon.setPosition(x, y);
-    if (action === "block") {
-      icon.fillStyle(0x102421, 1);
-      icon.fillRoundedRect(-15, -21, 30, 38, 8);
-      icon.fillStyle(0xd4e7ff, 1);
-      icon.fillTriangle(0, -13, 11, -4, -11, -4);
-      icon.fillRect(-8, -1, 16, 11);
-      return icon;
-    }
-
     const kind = action as AttackKind;
     icon.lineStyle(4, 0x102421, 1);
     icon.fillStyle(0x102421, 1);
@@ -1332,18 +1451,20 @@ export class FightScene extends Phaser.Scene {
     actor.facing = actor.sprite.x <= opponent.sprite.x ? 1 : -1;
     actor.sprite.setFlipX(actor.facing === -1);
     this.syncFighterAttachments(actor);
-    actor.isBlocking = controls.block && body.blocked.down && !actor.attack && actor.shield > 0;
+    actor.isBlocking = false;
 
-    const speed = actor.isBlocking ? actor.config.speed * 0.38 : actor.config.speed;
+    const speed = actor.config.speed;
     if (controls.left && !controls.right) actor.sprite.setVelocityX(-speed);
     else if (controls.right && !controls.left) actor.sprite.setVelocityX(speed);
 
-    if (controls.up && body.blocked.down && !actor.isBlocking) {
+    if (controls.up && body.blocked.down) {
       actor.sprite.setVelocityY(-actor.config.jumpPower);
     }
 
-    if (controls.down && body.blocked.down) {
+    if (controls.down && body.blocked.down && this.isStandingOnPassThroughPlatform(actor)) {
+      actor.dropThroughUntil = time + PLATFORM_DROP_THROUGH_MS;
       actor.sprite.setVelocityX(body.velocity.x * 0.55);
+      actor.sprite.setVelocityY(Math.max(body.velocity.y, PLATFORM_DROP_THROUGH_SPEED));
     }
 
     const attacksDisabled = this.proposalRockBossActive && actor === this.playerOne;
@@ -1357,9 +1478,21 @@ export class FightScene extends Phaser.Scene {
       actor.sprite.setVelocityX(0);
     }
 
-    actor.sprite.setTint(actor.isBlocking ? 0xa8c6ff : actor.config.tint);
+    actor.sprite.setTint(actor.config.tint);
     this.updateShieldVisual(actor);
     this.syncFighterAttachments(actor);
+  }
+
+  private isStandingOnPassThroughPlatform(actor: RuntimeFighter) {
+    const body = actor.sprite.body as Phaser.Physics.Arcade.Body;
+    return this.arenaPlatforms.some((platform) => {
+      if (!platform.getData("passThrough")) return false;
+      const platformBody = platform.body as Phaser.Physics.Arcade.StaticBody;
+      if (!platformBody) return false;
+      const overlapsX = body.right > platformBody.left + 6 && body.left < platformBody.right - 6;
+      const feetAtTop = Math.abs(body.bottom - platformBody.top) <= ARENA_FLOOR_SNAP_TOLERANCE + 3;
+      return overlapsX && feetAtTop;
+    });
   }
 
   private updateOceanBoss(time: number) {
@@ -1533,7 +1666,7 @@ export class FightScene extends Phaser.Scene {
         view.button.setFillStyle(0xf8fff4, 1);
         view.icon.setScale(1.12 + Math.sin(this.time.now / 92) * 0.05);
       } else {
-        view.button.setFillStyle(isAttack ? 0xffb84d : view.action === "block" ? 0x9bc2ff : 0xf2d37a, 0.9);
+        view.button.setFillStyle(isAttack ? 0xffb84d : 0xf2d37a, 0.9);
         view.icon.setScale(1);
       }
     }
@@ -1545,7 +1678,7 @@ export class FightScene extends Phaser.Scene {
       right: "RIGHT",
       up: "UP",
       down: "DOWN",
-      block: "BLOCK",
+      block: "",
       light: "LIGHT",
       heavy: "HEAVY",
       special: "SPECIAL",
@@ -1688,31 +1821,26 @@ export class FightScene extends Phaser.Scene {
   }
 
   private rechargeShields(time: number) {
-    const delta = this.game.loop.delta / 1000;
     for (const actor of [this.playerOne, this.playerTwo]) {
-      if (actor.isBlocking || actor.shield >= actor.config.maxShield || time < actor.shieldRechargePausedUntil) continue;
-      actor.shield = Math.min(actor.config.maxShield, actor.shield + actor.config.shieldRechargePerSecond * delta);
+      actor.isBlocking = false;
+      actor.shield = actor.config.maxShield;
+      actor.shieldRechargePausedUntil = time;
     }
   }
 
   private updateShieldVisual(actor: RuntimeFighter) {
-    const visible = actor.isBlocking && actor.shield > 0;
-    const shieldRatio = actor.config.maxShield > 0 ? Phaser.Math.Clamp(actor.shield / actor.config.maxShield, 0, 1) : 0;
-    const pulse = visible ? 1 + Math.sin(this.time.now / 85) * 0.035 : 1;
     actor.shieldAura
       .setPosition(actor.sprite.x + actor.facing * 8, actor.sprite.y - 8)
-      .setAlpha(visible ? 0.18 + shieldRatio * 0.22 : 0)
-      .setScale(pulse, pulse)
-      .setVisible(visible);
+      .setAlpha(0)
+      .setVisible(false);
     actor.shieldEdge
       .setPosition(actor.sprite.x + actor.facing * 8, actor.sprite.y - 8)
-      .setAlpha(visible ? 0.68 + shieldRatio * 0.28 : 0)
-      .setScale(pulse * 1.03, pulse * 1.03)
-      .setVisible(visible);
+      .setAlpha(0)
+      .setVisible(false);
   }
 
   private tryAttack(actor: RuntimeFighter, kind: AttackKind, time: number) {
-    if (actor.attack || actor.cooldowns[kind] > time || actor.isBlocking) return;
+    if (actor.attack || actor.cooldowns[kind] > time) return;
     const attack = actor.config.attacks[kind];
     const isProposalSlam = actor.config.id === "proposal-rock" && kind === "heavy";
     const isProposalMine = actor.config.id === "proposal-rock" && kind === "light";
@@ -1946,21 +2074,6 @@ export class FightScene extends Phaser.Scene {
 
   private absorbDamageWithShield(target: RuntimeFighter, rawDamage: number) {
     const defendedDamage = rawDamage * target.config.defense;
-    if (target.isBlocking && target.shield > 0) {
-      const shieldDamage = Math.min(target.shield, defendedDamage);
-      target.shield = Math.max(0, target.shield - shieldDamage);
-      target.shieldRechargePausedUntil = this.time.now + 950;
-      this.createShieldHit(target);
-
-      const overflow = defendedDamage - shieldDamage;
-      if (overflow > 0) {
-        if (this.isSmashArena()) target.health += Math.round(overflow);
-        else target.health = Math.max(0, target.health - Math.round(overflow));
-        this.flashMoveLabel(target.sprite.x, target.sprite.y - 118, "BREAK");
-      }
-      return true;
-    }
-
     if (this.isSmashArena()) target.health += Math.round(defendedDamage);
     else target.health = Math.max(0, target.health - Math.round(defendedDamage));
     return false;
@@ -3063,7 +3176,10 @@ export class FightScene extends Phaser.Scene {
       const offsetX = actor.skin.placement.offsetX * actor.sprite.displayWidth * (actor.sprite.flipX ? -1 : 1);
       actor.skinOverlay
         .setPosition(actor.sprite.x + offsetX, actor.sprite.y + actor.skin.placement.offsetY * actor.sprite.displayWidth)
-        .setDisplaySize(actor.sprite.displayWidth * actor.skin.placement.widthRatio, actor.sprite.displayWidth * actor.skin.placement.widthRatio * 0.67)
+        .setDisplaySize(
+          actor.sprite.displayWidth * actor.skin.placement.widthRatio,
+          actor.sprite.displayWidth * actor.skin.placement.widthRatio * (actor.skin.placement.heightRatio ?? 0.67),
+        )
         .setFlipX(actor.sprite.flipX)
         .setRotation(actor.sprite.rotation)
         .setAlpha(actor.sprite.alpha)
@@ -3235,7 +3351,6 @@ export class FightScene extends Phaser.Scene {
     if (absDistance < 96 && Math.random() < aggression) plan.light = true;
     else if (absDistance < 126 && Math.random() < 0.48) plan.heavy = true;
     else if (absDistance < 188 && this.playerTwo.cooldowns.special <= time && Math.random() < 0.36) plan.special = true;
-    if (this.playerOne.attack && Math.random() < (this.playerTwo.config.aiProfile === "defensive" ? 0.7 : 0.38)) plan.block = true;
     if (Math.random() < 0.08) plan.up = true;
 
     this.playerTwo.aiPlan = plan;
@@ -3275,7 +3390,7 @@ export class FightScene extends Phaser.Scene {
       cooldowns: actor.cooldowns,
       rounds: actor.rounds,
       facing: actor.facing,
-      isBlocking: actor.isBlocking,
+      isBlocking: false,
     };
   }
 
@@ -3302,12 +3417,12 @@ export class FightScene extends Phaser.Scene {
     actor.cooldowns = state.cooldowns;
     actor.rounds = state.rounds;
     actor.facing = state.facing;
-    actor.isBlocking = state.isBlocking;
+    actor.isBlocking = false;
     actor.sprite.setPosition(state.x, state.y);
     actor.sprite.setVelocity(state.velocityX, state.velocityY);
     actor.sprite.setFlipX(state.facing === -1);
     this.syncFighterAttachments(actor);
-    actor.sprite.setTint(actor.isBlocking ? 0xa8c6ff : actor.config.tint);
+    actor.sprite.setTint(actor.config.tint);
     this.updateShieldVisual(actor);
   }
 
@@ -3318,16 +3433,10 @@ export class FightScene extends Phaser.Scene {
     const p2Ratio = this.isSmashArena()
       ? Phaser.Math.Clamp(this.playerTwo.health / SMASH_DAMAGE_BAR_CAP, 0, 1)
       : Phaser.Math.Clamp(this.playerTwo.health / this.playerTwo.config.maxHealth, 0, 1);
-    const p1ShieldRatio =
-      this.playerOne.config.maxShield > 0 ? Phaser.Math.Clamp(this.playerOne.shield / this.playerOne.config.maxShield, 0, 1) : 0;
-    const p2ShieldRatio =
-      this.playerTwo.config.maxShield > 0 ? Phaser.Math.Clamp(this.playerTwo.shield / this.playerTwo.config.maxShield, 0, 1) : 0;
     this.healthBars[0].displayWidth = 420 * p1Ratio;
     this.healthBars[1].displayWidth = 420 * p2Ratio;
-    this.shieldBars[0].displayWidth = 420 * p1ShieldRatio;
-    this.shieldBars[1].displayWidth = 420 * p2ShieldRatio;
-    this.shieldBars[0].setFillStyle(this.playerOne.isBlocking ? 0xcaf8ff : 0x7ee8ff);
-    this.shieldBars[1].setFillStyle(this.playerTwo.isBlocking ? 0xcaf8ff : 0x7ee8ff);
+    this.shieldBars[0]?.setVisible(false);
+    this.shieldBars[1]?.setVisible(false);
     this.healthBars[0].setFillStyle(this.isSmashArena() && this.playerOne.health >= 100 ? 0xff684f : this.isSmashArena() ? 0xffb84d : 0x56c271);
     this.healthBars[1].setFillStyle(this.isSmashArena() && this.playerTwo.health >= 100 ? 0xff684f : this.isSmashArena() ? 0xffb84d : 0x56c271);
     this.healthTexts[0]?.setText(this.isSmashArena() ? `${Math.round(this.playerOne.health)}%` : `${Math.max(0, Math.round(this.playerOne.health))}`);

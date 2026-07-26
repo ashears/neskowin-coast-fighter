@@ -232,6 +232,16 @@ export function awardVictoryCoins(matchKey: string, amount: number) {
   return { amount, progress: nextProgress };
 }
 
+export function grantVictoryCoins(amount: number) {
+  const progress = getVictoryProgress();
+  const nextProgress = {
+    ...progress,
+    coins: progress.coins + Math.max(0, Math.floor(amount)),
+  };
+  saveVictoryProgress(nextProgress);
+  return nextProgress;
+}
+
 export function calculateVictoryReward(mode: string, campaignWon: boolean) {
   if (campaignWon) return 125;
   if (mode === "campaign") return 35;

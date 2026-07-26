@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 
-export type CharacterSkinId = "go-ducks-hat";
+export type CharacterSkinId = "go-ducks-hat" | "batman-skin";
 
 export interface CharacterSkinConfig {
   id: CharacterSkinId;
@@ -15,6 +15,7 @@ export interface CharacterSkinConfig {
     offsetX: number;
     offsetY: number;
     widthRatio: number;
+    heightRatio?: number;
   };
 }
 
@@ -30,8 +31,24 @@ export const characterSkins: CharacterSkinConfig[] = [
     accent: 0x154733,
     placement: {
       offsetX: -0.04,
-      offsetY: -0.5,
+      offsetY: -0.36,
       widthRatio: 0.7,
+    },
+  },
+  {
+    id: "batman-skin",
+    displayName: "Batman Skin",
+    description: "A midnight cowl, cape, belt, and bat emblem reskin for The Chelan.",
+    fighterId: "chelan",
+    price: 260,
+    textureKey: "skin-batman",
+    assetPath: "assets/skins/batman-skin.png",
+    accent: 0xf3c51f,
+    placement: {
+      offsetX: 0,
+      offsetY: 0,
+      widthRatio: 1,
+      heightRatio: 0.6,
     },
   },
 ];
@@ -55,7 +72,10 @@ export function drawCharacterSkinOverlay(
     y + skin.placement.offsetY * fighterDisplayWidth,
     skin.textureKey,
   );
-  image.setDisplaySize(fighterDisplayWidth * skin.placement.widthRatio, fighterDisplayWidth * skin.placement.widthRatio * 0.67);
+  image.setDisplaySize(
+    fighterDisplayWidth * skin.placement.widthRatio,
+    fighterDisplayWidth * skin.placement.widthRatio * (skin.placement.heightRatio ?? 0.67),
+  );
   if (depth !== undefined) image.setDepth(depth);
   return image;
 }

@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import { getFighter } from "../fighters";
 import { rerenderOnResize } from "../responsive";
 import { characterSkins, drawCharacterSkinOverlay, type CharacterSkinConfig } from "../skins";
 import {
@@ -229,11 +230,13 @@ export class VictoryStoreScene extends Phaser.Scene {
   private drawSkinPreview(skin: CharacterSkinConfig) {
     const centerX = 782;
     const centerY = 420;
+    const fighter = getFighter(skin.fighterId);
+    const previewSize = this.getSkinPreviewSize(skin.fighterId);
     this.add.rectangle(centerX, centerY, 590, 255, 0x101820, 0.94).setStrokeStyle(4, skin.accent, 0.9);
     this.add.ellipse(centerX, centerY + 62, 340, 54, skin.accent, 0.2).setBlendMode(Phaser.BlendModes.ADD);
-    this.add.image(centerX, centerY - 18, "fighter-proposal-rock").setDisplaySize(230, 172);
-    drawCharacterSkinOverlay(this, skin, "proposal-rock", centerX, centerY - 18, 230);
-    this.add.text(centerX, centerY + 108, "PROPOSAL ROCK", {
+    this.add.image(centerX, centerY - 18, fighter.spriteKey).setDisplaySize(previewSize.width, previewSize.height);
+    drawCharacterSkinOverlay(this, skin, fighter.id, centerX, centerY - 18, previewSize.width);
+    this.add.text(centerX, centerY + 108, fighter.displayName.toUpperCase(), {
       fontFamily: "Impact, system-ui, sans-serif",
       fontSize: "31px",
       color: "#fff7e6",
@@ -241,6 +244,13 @@ export class VictoryStoreScene extends Phaser.Scene {
       stroke: "#101820",
       strokeThickness: 7,
     }).setOrigin(0.5);
+  }
+
+  private getSkinPreviewSize(fighterId: string) {
+    if (fighterId === "proposal-rock") return { width: 230, height: 172 };
+    if (fighterId === "chelan") return { width: 360, height: 216 };
+    if (fighterId === "ocean") return { width: 330, height: 215 };
+    return { width: 180, height: 228 };
   }
 
   private addCustomControls(custom: CustomVictorySettings) {
