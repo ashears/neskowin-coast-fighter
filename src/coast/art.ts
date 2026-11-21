@@ -1,9 +1,9 @@
 import type { FighterId } from './content';
 import proposal from '../../public/assets/fighters/proposal-rock.png?url';
 import chelan from '../../public/assets/fighters/chelan.png?url';
-import house from '../../public/assets/fighters/the-house.svg?url';
-import ripRap from '../../public/assets/fighters/rip-rap.svg?url';
-import ocean from '../../public/assets/fighters/ocean.svg?url';
+import house from '../../public/assets/fighters/the-house.webp?url';
+import ripRap from '../../public/assets/fighters/rip-rap.webp?url';
+import ocean from '../../public/assets/fighters/ocean.webp?url';
 import duckFlag from '../../public/assets/fighters/duck-flag-sprite.png?url';
 
 export const sprites = {

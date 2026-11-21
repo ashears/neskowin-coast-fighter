@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Button, createMatch, createRecording, playRecording, snapshotChecksum } from '@ashears/2d-fighter-framework';
-import { bouts, campaign, recordBout, normalizeProgress, unlockedFighters, shellBalance, equipPalette } from '../dist-server/campaign.js';
+import { bouts, campaign, recordBout, normalizeProgress, shellBalance, equipPalette } from '../dist-server/campaign.js';
 import { playBout } from './tournament-player.mjs';
 import { coastConfig, fighterIds, stageIds, ruleIds, supportsMatch } from '../dist-server/content.js';
 
@@ -29,26 +29,27 @@ const qualifier = bouts[0];
 const kingTide = bouts.at(-1);
 const win = { phase: 'finished', winner: 0 };
 
-test('the tournament validates progression, unlocks fighters, and pays each prize once', () => {
+test('the tournament validates progression and pays each prize once', () => {
   const initial = normalizeProgress(null);
-  assert.deepEqual(unlockedFighters(initial), ['proposal-rock', 'duck-flag']);
   assert.equal(campaign.status(initial.completed, bouts[1].id), 'locked');
   assert.equal(recordBout(initial, kingTide.id, win), initial);
   assert.equal(recordBout(initial, qualifier.id, { ...win, winner: 1 }), initial);
   const cleared = recordBout(initial, qualifier.id, win);
   assert.equal(recordBout(cleared, qualifier.id, win), cleared);
   assert.equal(campaign.status(cleared.completed, bouts[1].id), 'available');
-  assert.deepEqual(unlockedFighters(cleared), ['proposal-rock', 'duck-flag', 'chelan']);
   assert.deepEqual(normalizeProgress({ completed: [qualifier.id, kingTide.id] }), cleared);
   assert.deepEqual(normalizeProgress({ completed: ['proposal-rock-cleanup'] }), initial);
   const completed = bouts.reduce((progress, { id }) => recordBout(progress, id, win), initial);
-  assert.equal(new Set(unlockedFighters(completed)).size, fighterIds.length);
+  assert.deepEqual(completed.completed, bouts.map(({ id }) => id));
   assert.equal(shellBalance(completed), 240);
 });
 
 test('all five bouts are winnable through combat and introduce their signature attacks', () => {
   for (const bout of bouts) {
-    const result = playBout(bout, 'duck-flag');
+    const cleared = bouts.slice(0, bouts.indexOf(bout)).map(({ id }) => id);
+    const { match } = campaign.startBout(cleared, bout.id, 17);
+    assert.deepEqual(match.definition.fighters.map(({ id }) => id), [bout.player, bout.opponent]);
+    const result = playBout(bout);
     assert.equal(result.state.winner, 0, bout.title);
     assert(result.playerHits > 0, bout.title);
     if (bout.rule === 'stock') assert.equal(result.state.fighters[1].stocks, 0);
@@ -57,26 +58,24 @@ test('all five bouts are winnable through combat and introduce their signature a
   }
 });
 
-test('both starters can knock out The Chelan and The Ocean', () => {
+test('the assigned fighters can knock out The Chelan and The Ocean across seeds', () => {
   for (const seed of [1, 17, 867]) {
-    for (const player of ['proposal-rock', 'duck-flag']) {
-      for (const [bout, rounds] of [[qualifier, 1], [kingTide, 2]]) {
-        const { state, wins } = playBout(bout, player, seed);
-        assert.equal(state.winner, 0, `${bout.title} with ${player}`);
-        assert.equal(wins.length, rounds);
-        assert(wins.every(({ health, ticks }) => health === 0 && ticks < 50 * 60));
-      }
+    for (const [bout, rounds] of [[qualifier, 1], [kingTide, 2]]) {
+      const { state, wins } = playBout(bout, seed);
+      assert.equal(state.winner, 0, bout.title);
+      assert.equal(wins.length, rounds);
+      assert(wins.every(({ health, ticks }) => health === 0 && ticks < 50 * 60));
     }
   }
 });
 
 test('King Tide launches both waves and the second round starts its next attack sooner', () => {
-  const result = playBout(kingTide, 'proposal-rock');
+  const result = playBout(kingTide);
   assert(result.firstWaveWarning > 0);
   assert(result.attacks.has('heavy') && result.attacks.has('special'));
-  assert.equal(playBout(kingTide, 'proposal-rock', 17, true).state.winner, 1);
+  assert.equal(playBout(kingTide, 17, true).state.winner, 1);
   const cleared = bouts.slice(0, -1).map(({ id }) => id);
-  const { match, opponent } = campaign.startBout(cleared, kingTide.id, 'proposal-rock', 17);
+  const { match, opponent } = campaign.startBout(cleared, kingTide.id, 17);
   const sample = (round) => {
     const snapshot = structuredClone(match.snapshot());
     snapshot.fighters[1].position.x = 560;

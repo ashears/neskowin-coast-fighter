@@ -61,7 +61,7 @@ export class OfflineFight {
     const { definition, rules } = coastConfig(setup.fighters, setup.stage, setup.rule, setup.seed);
     this.match = createMatch(definition, rules);
     if (mode === 'cpu') {
-      const cpu = createCpu({ seed: setup.seed, preferredRange: fighterInfo[setup.fighters[1]].range, stage: definition.stage });
+      const cpu = createCpu({ seed: setup.seed, preferredRange: fighterInfo[setup.fighters[1]].range, stage: definition.stage, recovery: true });
       this.opponent = (snapshot) => cpu(snapshot, 1);
     }
   }

@@ -16,7 +16,8 @@ async function open(page) {
 }
 
 async function chooseMultiplayer(page, mode) {
-  await page.getByRole('button', { name: 'Multiplayer', exact: true }).click();
+  const multiplayer = page.getByRole('button', { name: 'Multiplayer', exact: true });
+  if (await multiplayer.getAttribute('aria-expanded') === 'false') await multiplayer.click();
   await page.getByRole('button', { name: mode, exact: true }).click();
 }
 
@@ -76,39 +77,56 @@ test('campaign plays from qualifier to championship and saves rewards', async ({
   await expect(page.locator('#rival-heading')).toHaveText('The Chelan');
   await page.screenshot({ path: info.outputPath('desktop-bracket.png') });
 
-  const fighter = page.locator('#fighter-fields [data-pick=duck-flag]');
-  await expect(page.locator('#fighter-fields [data-pick=chelan]')).toBeDisabled();
-  await fighter.click();
+  const start = page.getByRole('button', { name: 'Start bout' });
+  await expect(page.locator('#fighter-fields')).toBeHidden();
   const qualifier = bouts[0];
-  await page.getByRole('button', { name: 'Start bout' }).click();
+  await expect(page.locator('#player-heading')).toHaveText('Proposal Rock');
+  await start.click();
   await expect(page.locator('#viewport canvas')).toBeVisible();
-  await playFrames(page, playBout(qualifier, 'duck-flag', 17, true).frames);
-  await expect(page.getByRole('heading', { name: 'Bout lost' })).toBeVisible();
-  await expect(page.locator('#shell-balance')).toHaveText('0 shells');
+  await playFrames(page, playBout(qualifier, 17, true).frames);
+  await expect(page.getByRole('heading', { name: 'Bout lost' })).toBeFocused();
+  await expect(page.locator('#game-panel, #field-guide, #shop').filter({ visible: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Retry bout' }).click();
-  await expect(page.locator('.hud-badge').first()).toHaveText('Duck Flag');
-  await playFrames(page, playBout(qualifier, 'duck-flag').frames);
-  await expect(page.getByRole('heading', { name: 'Bout won' })).toBeVisible();
-  await expect(page.locator('#result-detail')).toContainText('The Chelan joined');
-  await expect(page.locator('#shell-balance')).toHaveText('60 shells');
+  await expect(page.locator('.hud-badge').first()).toHaveText('Proposal Rock');
+  await playFrames(page, playBout(qualifier).frames);
+  await expect(page.getByRole('heading', { name: 'Bout won' })).toBeFocused();
+  await expect(page.locator('#result-detail')).toContainText('Next, you play as The Chelan.');
+  await expect(page.getByRole('status')).toHaveText('Earned 60 shells.');
+  await page.getByRole('button', { name: 'Next bout' }).click();
+  await expect(page.locator('#bout-heading')).toBeFocused();
+  await expect(page.locator('#bout-heading')).toHaveText(bouts[1].title);
+  await expect(page.locator('#player-heading')).toHaveText('The Chelan');
+  await expect(page.locator('#game-panel')).toBeHidden();
+  const shop = page.getByRole('button', { name: 'Shop', exact: true });
+  await shop.click();
+  await expect(page.getByRole('heading', { name: 'Coast shop' })).toBeFocused();
   await page.getByRole('button', { name: 'Daybreak · 60 shells' }).click();
   await expect(page.getByRole('button', { name: 'Daybreak · Equipped' })).toHaveAttribute('aria-pressed', 'true');
-  await page.getByRole('button', { name: 'Next bout' }).click();
-  await expect(page.locator('#active-heading')).toHaveText(bouts[1].title);
-  await expect(page.locator('.hud-badge').first()).toHaveText('Duck Flag');
+  await page.getByRole('button', { name: 'Back to setup' }).click();
+  await expect(shop).toBeFocused();
 
   await page.reload();
   await page.getByRole('button', { name: 'Campaign', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Ghost Forest Qualifier Cleared' })).toBeEnabled();
-  await expect(page.getByRole('button', { name: 'Beach Access Showdown Ready' })).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('#fighter-fields [data-pick=chelan]')).toBeEnabled();
-  await expect(page.getByRole('button', { name: 'Daybreak · Equipped' })).toBeVisible();
-  await fighter.click();
-  await page.getByRole('button', { name: 'Start bout' }).click();
+  const firstBout = page.getByRole('button', { name: 'Ghost Forest Qualifier Cleared' });
+  const nextBout = page.getByRole('button', { name: 'Beach Access Showdown Ready' });
+  await expect(firstBout).toBeEnabled();
+  await expect(nextBout).toHaveAttribute('aria-pressed', 'true');
+  await firstBout.click();
+  await expect(firstBout).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#player-heading')).toHaveText('Proposal Rock');
+  await start.click();
+  await playFrames(page, playBout(qualifier).frames);
+  await expect(page.getByRole('heading', { name: 'Bout won' })).toBeVisible();
+  await expect(page.locator('#status')).toBeEmpty();
+  await page.getByRole('button', { name: 'Next bout' }).click();
 
-  for (const bout of bouts.slice(1)) {
-    const { frames, firstWaveWarning } = playBout(bout, 'duck-flag');
-    await expect(page.locator('#active-heading')).toHaveText(bout.title);
+  for (const [index, bout] of bouts.slice(1).entries()) {
+    const assigned = ['The Chelan', 'Duck Flag', 'Rip Rap', 'The House'][index];
+    const { frames, firstWaveWarning } = playBout(bout);
+    await expect(page.locator('#bout-heading')).toHaveText(bout.title);
+    await expect(page.locator('#player-heading')).toHaveText(assigned);
+    await start.click();
+    await expect(page.locator('.hud-badge').first()).toHaveText(assigned);
     if (bout.opponent === 'ocean') {
       await playFrames(page, frames.slice(0, firstWaveWarning));
       await expect(page.locator('#objective')).toHaveText('Sneaker Wave incoming · Jump');
@@ -118,6 +136,7 @@ test('campaign plays from qualifier to championship and saves rewards', async ({
       await playFrames(page, frames);
       await expect(page.getByRole('heading', { name: 'Bout won' })).toBeVisible();
       await page.getByRole('button', { name: 'Next bout' }).click();
+      await expect(page.locator('#game-panel')).toBeHidden();
     }
   }
 
@@ -126,7 +145,8 @@ test('campaign plays from qualifier to championship and saves rewards', async ({
   await page.getByRole('button', { name: 'View bracket' }).click();
   await expect(page.locator('#bracket-progress')).toHaveText('Tournament Champion');
   await expect(page.locator('#route-bouts [data-state="cleared"]')).toHaveCount(5);
-  await expect(page.locator('#fighter-fields [data-pick=ocean]')).toBeEnabled();
+  await shop.click();
+  await expect(page.getByRole('button', { name: 'Daybreak · Equipped' })).toBeVisible();
   await expect(page.locator('#shell-balance')).toHaveText('180 shells');
   const saved = await page.evaluate((key) => JSON.parse(localStorage.getItem(key)), campaignKey);
   expect(saved.completed).toEqual(bouts.map(({ id }) => id));
@@ -138,17 +158,20 @@ test('local stock match completes and can be replayed from a saved recording', a
   const errors = await open(page);
   await chooseMultiplayer(page, 'Local versus');
   await page.getByRole('button', { name: 'Choose arena' }).click();
-  await page.getByRole('combobox', { name: 'Rules' }).selectOption('stock');
   const arena = page.getByRole('group', { name: 'Arena', exact: true });
   const proposal = arena.getByRole('button', { name: 'Proposal Rock', exact: true });
   await expect(proposal).toHaveAttribute('aria-pressed', 'true');
-  await arena.getByRole('button', { name: 'Ghost Forest', exact: true }).click();
-  await expect(page.getByRole('combobox', { name: 'Rules' })).toHaveValue('health');
-  await page.getByRole('combobox', { name: 'Rules' }).selectOption('stock');
-  await expect(proposal).toHaveAttribute('aria-pressed', 'true');
+  await expect(arena.getByRole('button')).toHaveCount(2);
+  await expect(arena.getByRole('button', { name: 'Breakwater Ridge' })).toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Rules' })).toHaveCount(0);
+  await expect(page.locator('#format-name')).toHaveText('Three lives');
+  await expect(page.locator('#format-description')).toContainText('Leaving the arena costs a life.');
   await page.getByRole('button', { name: 'Start fight' }).click();
   await hold(page, 'a', 7600);
   await expect(page.getByRole('heading', { name: 'The Chelan wins' })).toBeVisible();
+  await expect(page.locator('#result-arena')).toHaveText('Proposal Rock');
+  await expect(page.locator('#result-detail')).toHaveText('Lives remaining: 0–3.');
+  await expect(page.locator('#game-panel')).toBeHidden();
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Choose a mode' })).toBeVisible();
   await chooseMultiplayer(page, 'Local versus');
@@ -164,12 +187,12 @@ test('mobile campaign accepts touch input and fits without overflow', async ({ b
     const page = await context.newPage();
     await page.clock.install();
     const errors = await open(page);
-    for (const button of await page.locator('#mode-screen button').all()) await expect(button).toBeInViewport({ ratio: 1 });
+    for (const button of await page.locator('#mode-screen button:visible').all()) await expect(button).toBeInViewport({ ratio: 1 });
     await page.screenshot({ path: info.outputPath('mobile-menu.png') });
     await page.getByRole('button', { name: 'Multiplayer', exact: true }).tap();
     await expect(page.getByRole('button', { name: 'Local versus', exact: true })).toBeInViewport({ ratio: 1 });
     await expect(page.getByRole('button', { name: 'Online', exact: true })).toBeInViewport({ ratio: 1 });
-    await page.getByRole('button', { name: 'Back to modes' }).tap();
+    await page.getByRole('button', { name: 'Multiplayer', exact: true }).tap();
     await page.getByRole('button', { name: 'Campaign', exact: true }).tap();
     await page.getByRole('button', { name: 'Start bout' }).tap();
     await expect(page.locator('#active-heading')).toHaveText('Ghost Forest Qualifier');
@@ -206,7 +229,6 @@ test('a shared link opens the Neskowin lobby, then players can play and rematch'
     guest.on('pageerror', ({ message }) => guestErrors.push(message));
     const errors = [await open(host), guestErrors];
     await chooseMultiplayer(host, 'Online');
-    await host.getByRole('combobox', { name: 'Rules' }).selectOption('stock');
     const externalSockets = [];
     for (const page of [host, guest]) page.on('websocket', ({ url }) => externalSockets.push(url));
     await left.grantPermissions(['clipboard-read', 'clipboard-write']);
@@ -239,14 +261,15 @@ test('a shared link opens the Neskowin lobby, then players can play and rematch'
     await expect(guest.locator('#session-label')).toHaveText('Online · P2');
     await expect(guest.locator('#room-move-guide')).toContainText('LaMichael Rush');
     await guest.keyboard.press('f');
-    await expect(host.locator('.hud-value').first()).toHaveText('11% · 3 ◆', { timeout: 5000 });
-    await expect(guest.locator('.hud-value').first()).toHaveText('11% · 3 ◆');
+    await expect(host.locator('.hud-value').first()).toHaveText('11% · 3 lives', { timeout: 5000 });
+    await expect(guest.locator('.hud-value').first()).toHaveText('11% · 3 lives');
     await guest.keyboard.down('d');
     await expect(guest.getByRole('heading', { name: 'The House wins' })).toBeVisible({ timeout: 12_000 });
     await guest.keyboard.up('d');
     await expect(host.getByRole('heading', { name: 'The House wins' })).toBeVisible();
     for (const page of [host, guest]) await page.getByRole('button', { name: 'Rematch' }).click();
     await expect(guest.locator('#session-label')).toHaveText('Online · P2');
+    await expect(guest.locator('#arena')).toBeFocused();
     await guest.getByRole('button', { name: 'Leave room' }).click();
     await expect(host.getByRole('status')).toHaveText('Your opponent left the room.');
     expect(externalSockets).toEqual([]);
@@ -293,7 +316,9 @@ test('multiplayer groups both modes and restores focus when backing out', async 
   await expect(local).toBeHidden();
   await expect(online).toBeHidden();
   await multiplayer.press('Enter');
-  await expect(page.getByRole('heading', { name: 'Multiplayer', exact: true })).toBeFocused();
+  await expect(multiplayer).toBeFocused();
+  await expect(multiplayer).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByRole('heading', { name: 'Choose a mode' })).toBeVisible();
   await expect(local).toHaveAccessibleDescription('Two players on one keyboard.');
   await expect(online).toHaveAccessibleDescription('Invite a friend to a private match.');
   await local.press('Enter');
@@ -304,8 +329,10 @@ test('multiplayer groups both modes and restores focus when backing out', async 
   await expect(page.getByRole('heading', { name: 'Choose arena', exact: true })).toBeFocused();
   await page.getByRole('button', { name: 'Back to multiplayer' }).click();
   await expect(online).toBeFocused();
-  await page.getByRole('button', { name: 'Back to modes' }).click();
+  await online.press('Escape');
   await expect(multiplayer).toBeFocused();
+  await expect(multiplayer).toHaveAttribute('aria-expanded', 'false');
+  await expect(online).toBeHidden();
   expect(errors).toEqual([]);
 });
 
@@ -376,16 +403,16 @@ test('Proposal Rock’s landing slam and Duck Flag’s hold-to-pass work from th
   await page.keyboard.down('k');
   await page.clock.runFor(350);
   await quarterback;
-  await expect(page.locator('.hud-value').first()).toHaveText('118 HP · 0');
+  await expect(page.locator('.hud-value').first()).toHaveText('0% · 3 lives');
   await page.keyboard.up('k');
   await page.clock.runFor(900);
-  await expect(page.locator('.hud-value').first()).toHaveText('103 HP · 0');
+  await expect(page.locator('.hud-value').first()).toHaveText('15% · 3 lives');
   await hold(page, 'd', 520);
   await page.keyboard.press('g');
   await page.clock.runFor(240);
-  await expect(page.locator('.hud-value').last()).toHaveText('94 HP · 0');
+  await expect(page.locator('.hud-value').last()).toHaveText('0% · 3 lives');
   await page.clock.runFor(500);
-  await expect(page.locator('.hud-value').last()).toHaveText('69 HP · 0');
+  await expect(page.locator('.hud-value').last()).toHaveText('25% · 3 lives');
   expect(errors).toEqual([]);
 });
 

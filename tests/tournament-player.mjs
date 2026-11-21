@@ -1,12 +1,16 @@
-import { Button as B } from '@ashears/2d-fighter-framework';
+import { Button as B, RECOVERY_INPUT } from '@ashears/2d-fighter-framework';
 import { bouts, campaign } from '../dist-server/campaign.js';
 
 // Generate reproducible keyboard inputs for a player who approaches, attacks, and recovers offstage.
-export function playBout(bout, player, seed = 17, idle = false) {
+export function playBout(bout, seed = 17, idle = false) {
   const cleared = bouts.slice(0, bouts.indexOf(bout)).map(({ id }) => id);
-  const { match, opponent } = campaign.startBout(cleared, bout.id, player, seed);
+  const { match, opponent } = campaign.startBout(cleared, bout.id, seed);
+  const player = bout.player;
   const stage = match.definition.stage;
-  const floor = stage.blastZone && stage.surfaces[0];
+  const banks = stage.surfaces.filter(surface => !surface.oneWay);
+  const left = Math.min(...banks.map(s => s.x));
+  const right = Math.max(...banks.map(s => s.x + s.width));
+  const floor = stage.blastZone && { x: left, width: right - left, y: Math.max(...banks.map(s => Math.max(s.y, s.endY ?? s.y))) };
   const frames = [];
   const wins = [];
   const attacks = new Set();
@@ -24,18 +28,22 @@ export function playBout(bout, player, seed = 17, idle = false) {
     const ready = (slot, button) => (me.cooldowns?.[slot] ?? 0) <= state.tick && !(me.previousInput & button);
     const jump = me.jumpsLeft && !(me.previousInput & B.Jump) ? B.Jump : 0;
     const edge = floor && (me.position.x < floor.x + 35 || me.position.x > floor.x + floor.width - 35);
+    const offstage = floor && (me.position.x < floor.x || me.position.x > floor.x + floor.width);
+    const recover = offstage && !me.surface && !me.move && !me.jumpsLeft && !me.recoverySpent
+      && (me.previousInput & RECOVERY_INPUT) !== RECOVERY_INPUT ? RECOVERY_INPUT : 0;
     const incoming = state.projectiles.some((shot) => shot.owner === 1
       && Math.abs(shot.position.x - me.position.x) < 135
       && Math.abs(shot.position.y - me.position.y) < 70
       && (me.position.x - shot.position.x) * shot.velocity.x > 0);
     let desired = 0;
     if (edge) {
-      desired = (me.position.x < 480 ? B.Right : B.Left) | (me.velocity.y > 1 ? jump : 0);
+      desired = (me.position.x < 480 ? B.Right : B.Left) | (me.velocity.y > 1 ? (jump || recover) : 0);
     } else if (me.move) {
       if (me.move.charge?.released === false && me.move.charge.held < (player === 'proposal-rock' ? 10 : 18)) {
         desired = me.move.slot === 'heavy' ? B.Heavy : B.Special;
       }
-    } else if (incoming && me.surface && jump) {
+    } else if ((incoming || (bout.opponent === 'ocean' && rival.move?.slot === 'special' && rival.move.frame > 19
+      && rival.move.frame < 30 && distance < 220)) && me.surface && jump) {
       desired = toward | jump;
     } else if (me.facing !== Math.sign(dx) && distance > 2) {
       desired = toward;
@@ -44,6 +52,21 @@ export function playBout(bout, player, seed = 17, idle = false) {
       else if (distance < 155 && dy > -38 && dy < 105 && ready('heavy', B.Heavy)
         && (!floor || (me.position.x > floor.x + 155 && me.position.x < floor.x + floor.width - 155))) desired = B.Heavy;
       else if (distance > 48 || (distance < 60 && Math.abs(dy) < 40 && rival.move && ready('light', B.Light))) desired = toward;
+    } else if (player === 'chelan') {
+      if (distance < 97 && Math.abs(dy) < 38 && ready('special', B.Special)) desired = B.Special;
+      else if (distance < 64 && Math.abs(dy) < 45 && ready('light', B.Light)) desired = B.Light;
+      else if (distance < 450 && Math.abs(dy) < 76 && ready('heavy', B.Heavy)) desired = B.Heavy;
+      else if (distance > 57) desired = toward;
+    } else if (player === 'rip-rap') {
+      if (distance < 90 && dy < 55 && ready('heavy', B.Heavy)) desired = B.Heavy;
+      else if (distance < 63 && Math.abs(dy) < 38 && ready('light', B.Light)) desired = B.Light;
+      else if (distance < 470 && Math.abs(dy) < 45 && ready('special', B.Special)) desired = B.Special;
+      else if (distance > 85 && rival.surface) desired = toward;
+    } else if (player === 'the-house') {
+      if (distance < 118 && Math.abs(dy) < 64 && ready('special', B.Special)) desired = B.Special;
+      else if (distance < 78 && dy > -40 && dy < 75 && ready('heavy', B.Heavy)) desired = B.Heavy;
+      else if (distance < 68 && Math.abs(dy) < 48 && ready('light', B.Light)) desired = B.Light;
+      else if (distance > 50) desired = toward;
     } else {
       if (distance < 320 && ready('special', B.Special)) desired = B.Special;
       else if (distance > 64 && distance < 460 && Math.abs(dy) < 70 && ready('heavy', B.Heavy)) desired = B.Heavy;
@@ -51,11 +74,11 @@ export function playBout(bout, player, seed = 17, idle = false) {
       else if (distance > 100 && (!floor || rival.surface)) desired = toward;
     }
     if (floor && dy < -36 && distance < 205 && me.surface && !me.move) desired = toward | jump;
-    if (floor && dy > 65 && me.surface && me.surface !== floor.id && distance < 160 && !me.move) {
+    if (floor && dy > 65 && me.surface && stage.surfaces.some(s => s.id === me.surface && s.oneWay) && distance < 160 && !me.move) {
       desired = toward | B.Down | jump;
     }
     if (floor && !me.surface && me.velocity.y > 4 && me.position.y > floor.y && Math.abs(me.position.x - 480) > 200) {
-      desired = (me.position.x < 480 ? B.Right : B.Left) | jump;
+      desired = (me.position.x < 480 ? B.Right : B.Left) | (jump || recover);
     }
 
     // One keyboard transition per tick, as each key event is queued separately in the app.

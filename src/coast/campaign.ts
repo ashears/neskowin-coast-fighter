@@ -9,11 +9,12 @@ interface Bout {
   id: string;
   title: string;
   stage: StageId;
+  player: FighterId;
   opponent: FighterId;
+  story: string;
   rule: RuleId;
   format: string;
   tip: string;
-  unlock?: FighterId;
   range: number;
   cadence: number;
   rival: RivalProfile;
@@ -21,14 +22,16 @@ interface Bout {
 
 export const bouts = [
   {
-    id: 'ghost-forest-qualifier', title: 'Ghost Forest Qualifier', stage: 'ghost-forest', opponent: 'chelan',
-    rule: 'health', format: 'One round', unlock: 'chelan',
+    id: 'ghost-forest-qualifier', title: 'Ghost Forest Qualifier', stage: 'ghost-forest', player: 'proposal-rock', opponent: 'chelan',
+    story: 'Proposal Rock meets The Chelan among the fallen spruces. Whoever takes the round earns a place in the coastal tournament.',
+    rule: 'health', format: 'Empty your opponent’s health bar to win the bout.',
     tip: 'Jump over Beach Throw, then attack while The Chelan recovers.',
     range: 220, cadence: 104, rival: { attacks: [{ within: 75, slots: ['light'] }, { within: 480, slots: ['heavy'] }] },
   },
   {
-    id: 'beach-access-showdown', title: 'Beach Access Showdown', stage: 'beach-access', opponent: 'duck-flag',
-    rule: 'health', format: 'First to two rounds',
+    id: 'beach-access-showdown', title: 'Beach Access Showdown', stage: 'beach-access', player: 'chelan', opponent: 'duck-flag',
+    story: 'The Chelan takes the challenge down to the beach access, where Duck Flag has claimed the boardwalk.',
+    rule: 'health', format: 'Empty your opponent’s health bar to take a round. Win two rounds.',
     tip: 'Jump the runner and get close. Guard when the motorcycle swings back.',
     range: 260, cadence: 83, rival: {
       retreatRange: 165, guardChance: 12, chargeTicks: { heavy: 20 },
@@ -36,8 +39,9 @@ export const bouts = [
     },
   },
   {
-    id: 'breakwater-semifinal', title: 'Breakwater Semifinal', stage: 'breakwater', opponent: 'rip-rap',
-    rule: 'stock', format: 'Three stocks', unlock: 'rip-rap',
+    id: 'breakwater-semifinal', title: 'Breakwater Semifinal', stage: 'breakwater', player: 'duck-flag', opponent: 'rip-rap',
+    story: 'Duck Flag pushes out onto the breakwater. Rip Rap holds the ridge, with open water on both sides.',
+    rule: 'stock', format: 'Knock Rip Rap out of the arena three times.',
     tip: 'Use the ledges to clear the boulder. Wait out Spike Crown before dropping in.',
     range: 112, cadence: 64, rival: {
       guardChance: 18,
@@ -49,8 +53,9 @@ export const bouts = [
     },
   },
   {
-    id: 'proposal-rock-final', title: 'Proposal Rock Final', stage: 'proposal-rock', opponent: 'the-house',
-    rule: 'stock', format: 'Three stocks', unlock: 'the-house',
+    id: 'proposal-rock-final', title: 'Proposal Rock Final', stage: 'proposal-rock', player: 'rip-rap', opponent: 'the-house',
+    story: 'Rip Rap crosses to Proposal Rock for the final. The House is waiting above the tide.',
+    rule: 'stock', format: 'Knock The House out of the arena three times.',
     tip: 'Porch Swing hits twice. Guard both hits, then strike during recovery.',
     range: 64, cadence: 48, rival: {
       guardChance: 16,
@@ -58,8 +63,9 @@ export const bouts = [
     },
   },
   {
-    id: 'king-tide-championship', title: 'King Tide Championship', stage: 'king-tide', opponent: 'ocean',
-    rule: 'health', format: 'First to two rounds', unlock: 'ocean',
+    id: 'king-tide-championship', title: 'King Tide Championship', stage: 'king-tide', player: 'the-house', opponent: 'ocean',
+    story: 'The tournament ends as the king tide reaches the beach. The House faces The Ocean to defend the shoreline.',
+    rule: 'health', format: 'Empty The Ocean’s health bar to take a round. Win two rounds.',
     tip: 'Jump Sneaker Wave when it breaks. Land close and hit before the next swell.',
     range: 245, cadence: 116, rival: {
       attacks: [{ within: 90, slots: ['light'] }, { within: 700, slots: ['heavy', 'special'] }],
@@ -81,8 +87,8 @@ const qualifierRules: RuleSet<null> = {
   },
 };
 
-function createBout(bout: Bout, player: FighterId, seed: number): CampaignFight {
-  const { definition: base, rules } = coastConfig([player, bout.opponent], bout.stage, bout.rule, seed);
+function createBout(bout: Bout, seed: number): CampaignFight {
+  const { definition: base, rules } = coastConfig([bout.player, bout.opponent], bout.stage, bout.rule, seed);
   const qualifier = bout.id === 'ghost-forest-qualifier';
   if (qualifier) {
     // Keep the first projectile off the starting frame so the player can read the fight.
@@ -93,7 +99,7 @@ function createBout(bout: Bout, player: FighterId, seed: number): CampaignFight 
     fighters: qualifier ? [base.fighters[0], { ...base.fighters[1], maxHealth: 70 }] as typeof base.fighters : base.fighters,
     timeLimit: (bout.rule === 'stock' ? 90 : 50) * TICK_RATE,
   };
-  const dial = { seed, stage: definition.stage, preferredRange: bout.range, rival: bout.rival };
+  const dial = { seed, stage: definition.stage, preferredRange: bout.range, rival: bout.rival, recovery: true };
   const cpu = createCpu({ ...dial, reactionTicks: bout.cadence });
   const surge = bout.id === 'king-tide-championship'
     ? createCpu({
@@ -110,10 +116,17 @@ function createBout(bout: Bout, player: FighterId, seed: number): CampaignFight 
   };
 }
 
-export const campaign = createCampaign(bouts.map((bout) => ({
+const bracket = createCampaign<BoutId, undefined>(bouts.map((bout) => ({
   id: bout.id,
-  createFight: (player: FighterId, seed: number) => createBout(bout, player, seed),
+  createFight: (_player, seed) => createBout(bout, seed),
 })));
+
+export const campaign = {
+  ...bracket,
+  startBout(completed: readonly BoutId[], id: BoutId, seed: number) {
+    return bracket.startBout(completed, id, undefined, seed);
+  },
+};
 
 export function normalizeProgress(data: unknown): Progress {
   const record = data && typeof data === 'object' ? data as Record<string, unknown> : {};
@@ -128,14 +141,6 @@ export function normalizeProgress(data: unknown): Progress {
     return true;
   });
   return { completed, owned, equipped: collection.equipped && owned.includes(collection.equipped) ? collection.equipped : null };
-}
-
-export function unlockedFighters(progress: Progress): FighterId[] {
-  const fighters: FighterId[] = ['proposal-rock', 'duck-flag'];
-  for (const bout of bouts) {
-    if ('unlock' in bout && progress.completed.includes(bout.id)) fighters.push(bout.unlock);
-  }
-  return fighters;
 }
 
 export function recordBout(progress: Progress, id: BoutId, result: Pick<Snapshot, 'phase' | 'winner'>): Progress {

@@ -1,13 +1,13 @@
-import { Button } from '@ashears/2d-fighter-framework';
+import { Button, RECOVERY_INPUT } from '@ashears/2d-fighter-framework';
 import type { InputFrame, Seat } from '@ashears/2d-fighter-framework';
 
 const firstKeys: Record<string, InputFrame> = {
   KeyA: Button.Left, KeyD: Button.Right, KeyW: Button.Jump, Space: Button.Jump, KeyS: Button.Down,
-  KeyR: Button.Guard, KeyF: Button.Light, KeyG: Button.Heavy, KeyH: Button.Special,
+  KeyR: Button.Guard, KeyF: Button.Light, KeyG: Button.Heavy, KeyH: Button.Special, KeyE: RECOVERY_INPUT,
 };
 const secondKeys: Record<string, InputFrame> = {
   ArrowLeft: Button.Left, ArrowRight: Button.Right, ArrowUp: Button.Jump, ArrowDown: Button.Down,
-  ShiftRight: Button.Guard, KeyJ: Button.Light, KeyK: Button.Heavy, KeyL: Button.Special,
+  ShiftRight: Button.Guard, KeyJ: Button.Light, KeyK: Button.Heavy, KeyL: Button.Special, KeyI: RECOVERY_INPUT,
 };
 
 export class Controls {

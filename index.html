@@ -12,7 +12,10 @@
   <header class="masthead">
     <h1 class="wordmark">Neskowin Coast Fighter</h1>
     <nav class="top-nav" id="game-nav" aria-label="Game navigation" hidden>
-      <button id="back-to-modes" type="button">Back to modes</button><a href="#roster">Fighters</a><a href="#controls">Controls</a><a href="#shop">Shop</a>
+      <button id="back-to-modes" type="button">Back to modes</button>
+      <button type="button" data-reference="roster">Fighters</button>
+      <button type="button" data-reference="controls">Controls</button>
+      <button type="button" data-reference="shop">Shop</button>
     </nav>
   </header>
   <main id="mode-screen" class="mode-screen" aria-labelledby="mode-heading">
@@ -20,21 +23,18 @@
     <div class="mode-menu">
       <button type="button" data-mode="campaign">Campaign</button>
       <button type="button" data-mode="cpu">Fight CPU</button>
-      <button type="button" id="open-multiplayer">Multiplayer</button>
-    </div>
-  </main>
-  <main id="multiplayer-screen" class="mode-screen multiplayer-screen" aria-labelledby="multiplayer-heading" hidden>
-    <button class="quiet" id="multiplayer-back" type="button">Back to modes</button>
-    <h2 id="multiplayer-heading" tabindex="-1">Multiplayer</h2>
-    <div class="mode-menu">
-      <button type="button" data-mode="local" aria-labelledby="local-title" aria-describedby="local-description">
-        <span id="local-title">Local versus</span>
-        <span id="local-description" class="mode-detail">Two players on one keyboard.</span>
-      </button>
-      <button type="button" data-mode="online" aria-labelledby="online-title" aria-describedby="online-description">
-        <span id="online-title">Online</span>
-        <span id="online-description" class="mode-detail">Invite a friend to a private match.</span>
-      </button>
+      <button type="button" id="open-multiplayer">Multiplayer <span aria-hidden="true">⌄</span></button>
+      <div id="multiplayer-options" class="multiplayer-options" hidden>
+        <button type="button" data-mode="local" aria-labelledby="local-title" aria-describedby="local-description">
+          <span id="local-title">Local versus</span>
+          <span id="local-description" class="mode-detail">Two players on one keyboard.</span>
+        </button>
+        <button type="button" data-mode="online" aria-labelledby="online-title" aria-describedby="online-description">
+          <span id="online-title">Online</span>
+          <span id="online-description" class="mode-detail">Invite a friend to a private match.</span>
+        </button>
+      </div>
+      <button type="button" data-reference="guide">View Fighters and Controls</button>
     </div>
   </main>
   <main class="shell" id="game-screen" hidden>
@@ -54,6 +54,7 @@
         </div>
         <div id="touch-controls" class="touch-controls" hidden role="group" aria-label="Player one touch controls">
           <div class="touch-group directions">
+            <button type="button" data-input="132" class="recover" aria-label="Air recovery">Recover</button>
             <button type="button" data-input="4" class="jump" aria-label="Jump">↑</button>
             <button type="button" data-input="1" class="left" aria-label="Move left">←</button>
             <button type="button" data-input="8" class="down" aria-label="Down">↓</button>
@@ -73,6 +74,7 @@
           <div class="quick-controls" aria-label="Player one keyboard shortcuts">
             <span><kbd>A</kbd> <kbd>D</kbd> Move</span>
             <span><kbd>W</kbd> / <kbd>Space</kbd> Jump</span>
+            <span><kbd>E</kbd> Recover</span>
             <span><kbd>F</kbd> <kbd>G</kbd> <kbd>H</kbd> Attack</span>
             <span><kbd>R</kbd> Guard</span>
           </div>
@@ -80,34 +82,51 @@
           <label class="check"><input id="sound" type="checkbox"> Sound</label>
         </div>
       </section>
-      <aside class="setup" id="setup" aria-label="Match setup" tabindex="-1">
+      <aside class="setup fighter-setup-panel" id="setup" aria-label="Match setup" tabindex="-1">
         <div id="setup-view">
           <h2 id="setup-heading" tabindex="-1">Match setup</h2>
-          <form id="setup-form">
-            <section id="campaign-route" class="campaign-route" hidden aria-labelledby="route-heading">
-              <div id="campaign-intro" class="campaign-intro" hidden>
-                <p id="bracket-progress"></p>
-                <div class="rival-card">
-                  <span id="rival-portrait" class="selection-art" aria-hidden="true"></span>
-                  <div>
-                    <h3 id="rival-heading"></h3>
-                    <p id="bout-format"></p>
-                  </div>
-                </div>
-                <p id="bout-tip" class="hint"></p>
-              </div>
-              <h3 id="route-heading">Tournament bracket</h3>
+          <section id="campaign-route" class="fighter-campaign-layout" hidden aria-label="Campaign matchup">
+            <div class="campaign-bracket">
+              <h3>Tournament bracket</h3>
+              <p id="bracket-progress"></p>
               <ol id="route-bouts"></ol>
-            </section>
+            </div>
+            <div class="campaign-matchup">
+              <h3 id="bout-heading" tabindex="-1"></h3>
+              <div class="campaign-fighters">
+                <div class="campaign-fighter">
+                  <span>You play as</span>
+                  <div id="player-portrait" class="selection-art" aria-hidden="true"></div>
+                  <strong id="player-heading"></strong>
+                </div>
+                <div class="campaign-fighter">
+                  <span>Opponent</span>
+                  <div id="rival-portrait" class="selection-art" aria-hidden="true"></div>
+                  <strong id="rival-heading"></strong>
+                </div>
+              </div>
+              <p id="bout-story"></p>
+              <p id="bout-format"></p>
+              <p id="bout-tip" class="hint"></p>
+              <button class="primary full" id="start-bout" type="button">Start bout</button>
+            </div>
+          </section>
+          <form id="setup-form">
             <div id="fighter-fields"></div>
-            <div id="arena-fields" class="pair-fields" hidden>
-              <label>Rules<select id="rules"><option value="health">Health rounds</option><option value="stock">Three stocks</option></select></label>
+            <button class="primary full" id="choose-arena" type="button">Choose arena</button>
+            <div id="arena-fields" class="fighter-arena-layout" hidden>
               <div id="stage"></div>
+              <div class="fighter-arena-rail">
+                <div id="arena-choices"></div>
+                <div class="match-format">
+                  <strong id="format-name"></strong>
+                  <p id="format-description"></p>
+                </div>
+                <button class="primary full" id="start" type="submit">Start fight</button>
+                <button class="quiet" id="back-to-fighters" type="button">Back to fighters</button>
+              </div>
             </div>
             <p class="hint" id="setup-hint"></p>
-            <button class="primary full" id="choose-arena" type="button">Choose arena</button>
-            <button class="quiet" id="back-to-fighters" type="button" hidden>Back to fighters</button>
-            <button class="primary full" id="start" type="submit">Start fight</button>
           </form>
           <form id="join-form" class="join-form" hidden>
             <label>Invite link<textarea id="invite-input" rows="2" maxlength="75000" autocomplete="off" spellcheck="false" required></textarea></label>
@@ -143,16 +162,23 @@
           <dl id="room-move-guide" class="move-guide" aria-label="Your moves" hidden></dl>
           <button class="quiet exit-room" data-leave-room type="button">Leave room</button>
         </section>
-        <section id="result-view" hidden aria-labelledby="result-heading">
+        <section id="result-view" class="fighter-results" hidden aria-labelledby="result-heading">
           <h2 id="result-heading" tabindex="-1">Result</h2>
-          <p id="result-detail" class="hint"></p>
-          <button class="primary full" id="again" type="button">Rematch</button>
-          <button class="quiet exit-room" id="result-back" type="button">Back to setup</button>
+          <p id="result-arena" class="fighter-result-arena"></p>
+          <p id="result-detail"></p>
+          <div class="fighter-result-actions">
+            <button class="primary" id="again" type="button">Rematch</button>
+            <button class="quiet" id="result-back" type="button">Back to setup</button>
+          </div>
         </section>
         <p id="status" role="status"></p>
       </aside>
     </div>
-    <section class="field-guide" aria-label="How to play">
+  </main>
+  <main class="shell" id="reference-screen" aria-labelledby="reference-heading" hidden>
+    <button class="quiet" id="reference-back" type="button">Back</button>
+    <h2 id="reference-heading" tabindex="-1"></h2>
+    <section class="field-guide" id="field-guide" aria-label="How to play">
       <div class="roster-card" id="roster">
         <h2>Fighters</h2>
         <div id="roster-list" class="roster-list"></div>
@@ -162,15 +188,17 @@
         <table><thead><tr><th scope="col">Action</th><th scope="col">Player one</th><th scope="col">Player two</th></tr></thead>
           <tbody>
             <tr><th scope="row">Move / jump</th><td><kbd>A</kbd> <kbd>D</kbd> <kbd>W</kbd> or <kbd>Space</kbd></td><td><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd></td></tr>
+            <tr><th scope="row">Fast-fall while descending</th><td><kbd>S</kbd></td><td><kbd>↓</kbd></td></tr>
             <tr><th scope="row">Drop through</th><td><kbd>S</kbd> + <kbd>W</kbd></td><td><kbd>↓</kbd> + <kbd>↑</kbd></td></tr>
+            <tr><th scope="row">Air recovery</th><td><kbd>E</kbd></td><td><kbd>I</kbd></td></tr>
             <tr><th scope="row">Guard</th><td><kbd>R</kbd></td><td><kbd>Right Shift</kbd></td></tr>
             <tr><th scope="row">Light / heavy / special</th><td><kbd>F</kbd> <kbd>G</kbd> <kbd>H</kbd></td><td><kbd>J</kbd> <kbd>K</kbd> <kbd>L</kbd></td></tr>
           </tbody>
         </table>
       </div>
     </section>
-    <section class="shore-shop" id="shop" aria-labelledby="shop-title">
-      <div><h2 id="shop-title">Coast shop</h2><p class="hint">First campaign clears earn shells. Equip a palette to change your fighter’s accent.</p></div>
+    <section class="shore-shop" id="shop" aria-labelledby="reference-heading">
+      <div><p class="hint">First campaign clears earn shells. Equip a palette to change your fighter’s accent.</p></div>
       <div class="shop-actions"><p id="shell-balance" aria-live="polite"></p><div id="shop-palette-list"></div><p id="shop-status" role="status" hidden></p></div>
     </section>
   </main>
