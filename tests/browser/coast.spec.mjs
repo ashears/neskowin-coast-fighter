@@ -137,6 +137,7 @@ test('local stock match completes and can be replayed from a saved recording', a
   await page.clock.install();
   const errors = await open(page);
   await chooseMultiplayer(page, 'Local versus');
+  await page.getByRole('button', { name: 'Choose arena' }).click();
   await page.getByRole('combobox', { name: 'Rules' }).selectOption('stock');
   const arena = page.getByRole('group', { name: 'Arena', exact: true });
   const proposal = arena.getByRole('button', { name: 'Proposal Rock', exact: true });
@@ -260,7 +261,9 @@ test('CPU mode runs from the keyboard and can return to setup', async ({ page })
   const errors = await open(page);
   await page.getByRole('button', { name: 'Fight CPU', exact: true }).focus();
   await page.keyboard.press('Enter');
-  await expect(page.getByRole('heading', { name: 'Fight CPU' })).toBeFocused();
+  await expect(page.getByRole('heading', { name: 'Choose fighters' })).toBeFocused();
+  await page.getByRole('button', { name: 'Choose arena' }).press('Enter');
+  await expect(page.getByRole('heading', { name: 'Choose arena' })).toBeFocused();
   await page.getByRole('button', { name: 'Start fight' }).focus();
   await page.keyboard.press('Enter');
   await expect(page.locator('#session-label')).toHaveText('CPU fight');
@@ -277,7 +280,7 @@ test('CPU mode runs from the keyboard and can return to setup', async ({ page })
     await expect(page.locator('#mode-screen button').nth(index)).toHaveAccessibleName(name);
   }
   await chooseMultiplayer(page, 'Local versus');
-  await expect(page.getByRole('button', { name: 'Start fight' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Choose arena' })).toBeVisible();
   await expect(page.locator('#game-panel')).toBeHidden();
   expect(errors).toEqual([]);
 });
@@ -294,11 +297,11 @@ test('multiplayer groups both modes and restores focus when backing out', async 
   await expect(local).toHaveAccessibleDescription('Two players on one keyboard.');
   await expect(online).toHaveAccessibleDescription('Invite a friend to a private match.');
   await local.press('Enter');
-  await expect(page.getByRole('heading', { name: 'Local versus', exact: true })).toBeFocused();
+  await expect(page.getByRole('heading', { name: 'Choose fighters', exact: true })).toBeFocused();
   await page.getByRole('button', { name: 'Back to multiplayer' }).click();
   await expect(local).toBeFocused();
   await online.press('Enter');
-  await expect(page.getByRole('heading', { name: 'Online', exact: true })).toBeFocused();
+  await expect(page.getByRole('heading', { name: 'Choose arena', exact: true })).toBeFocused();
   await page.getByRole('button', { name: 'Back to multiplayer' }).click();
   await expect(online).toBeFocused();
   await page.getByRole('button', { name: 'Back to modes' }).click();
@@ -314,7 +317,7 @@ test('multiplayer keeps local play available when the browser lacks online rooms
   await expect(online).toBeDisabled();
   await expect(online).toHaveAccessibleDescription('This browser does not support online rooms.');
   await page.getByRole('button', { name: 'Local versus', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Start fight' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Choose arena' })).toBeEnabled();
   expect(errors).toEqual([]);
 });
 
@@ -364,6 +367,7 @@ test('Proposal Rock’s landing slam and Duck Flag’s hold-to-pass work from th
   await chooseMultiplayer(page, 'Local versus');
   await page.getByRole('button', { name: 'Player two', exact: true }).click();
   await page.locator('#fighter-fields [data-pick=duck-flag]').click();
+  await page.getByRole('button', { name: 'Choose arena' }).click();
   await page.getByRole('button', { name: 'Start fight' }).click();
   await expect(page.locator('#move-guide')).toContainText('Starfish Mine');
   await expect(page.locator('#move-guide-two')).toContainText('Joey Harrington Pass');
@@ -393,6 +397,15 @@ test('a held touch input summons and releases Duck Flag’s quarterback', async 
     const errors = await open(page);
     await page.getByRole('button', { name: 'Fight CPU', exact: true }).tap();
     await page.locator('#fighter-fields [data-pick=duck-flag]').tap();
+    const next = page.getByRole('button', { name: 'Choose arena' });
+    await expect(next).toBeInViewport({ ratio: 1 });
+    await next.tap();
+    await expect(page.locator('#fighter-fields')).toBeHidden();
+    await expect(page.getByRole('button', { name: 'Start fight' })).toBeInViewport({ ratio: 1 });
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+    await page.getByRole('button', { name: 'Back to fighters' }).tap();
+    await expect(page.getByRole('button', { name: 'Player one', exact: true })).toContainText('Duck Flag');
+    await next.tap();
     await page.getByRole('button', { name: 'Start fight' }).tap();
     const heavy = page.getByRole('button', { name: 'Heavy attack' });
     await heavy.scrollIntoViewIfNeeded();

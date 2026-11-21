@@ -553,3 +553,21 @@ body:has(#match-tools:not([hidden])) .setup > :not(#status) {
 
 .arena-select { --stage-accent: #bce1a3; }
 .arena-select-art[data-arena="king-tide"] { background-color: #174056; background-blend-mode: luminosity; }
+
+body:has(#setup-view:is([data-selection="fighters"], [data-selection="arena"]):not([hidden]))
+  :is(.field-guide, .shore-shop, .site-footer) { display: none; }
+
+#choose-arena { margin-top: 10px; }
+
+#arena-fields .arena-select-preview { height: clamp(132px, 30svh, 330px); aspect-ratio: auto; }
+
+#arena-fields .arena-select-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 64px), 1fr)); }
+
+#arena-fields .arena-select-grid button { max-height: 95px; }
+
+#back-to-fighters { margin-block: 5px; }
+
+@media (max-height: 600px) and (min-width: 540px) {
+  #arena-fields .arena-select { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  #arena-fields .arena-select-grid { align-content: start; }
+}

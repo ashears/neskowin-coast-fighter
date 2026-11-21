@@ -45,9 +45,6 @@ const gameScreen = byId('game-screen');
 const gamePanel = byId('game-panel');
 const modeButtons = [...document.querySelectorAll<HTMLButtonElement>('.mode-menu button[data-mode]')];
 const roomsAvailable = supportsDirectRooms();
-const modeNames: Record<Mode, string> = {
-  campaign: 'Campaign', cpu: 'Fight CPU', local: 'Local versus', online: 'Online',
-};
 const rulesField = byId<HTMLSelectElement>('rules');
 const arenaPicker = createArenaSelect(byId('stage'), stageIds.map((id) => ({
   id, ...stageInfo[id], surfaces: arenas[id].surfaces,
@@ -210,16 +207,41 @@ function setStatus(status: string) {
   byId('status').textContent = status;
 }
 
+let choosingArena = false;
+const chooseArena = byId('choose-arena');
+const backToFighters = byId('back-to-fighters');
+const setupHeading = byId('setup-heading');
+
+function updateSetupScreen() {
+  const arena = choosingArena || mode === 'online';
+  const fighters = !arena && mode !== 'campaign';
+  setupView.dataset.selection = arena ? 'arena' : fighters ? 'fighters' : 'campaign';
+  setupHeading.textContent = arena ? 'Choose arena' : mode === 'campaign' ? 'Neskowin Coast Championship' : 'Choose fighters';
+  byId('fighter-fields').hidden = arena;
+  byId('arena-fields').hidden = !arena;
+  chooseArena.hidden = !fighters;
+  backToFighters.hidden = !arena || mode === 'online';
+  startButton.hidden = fighters || (mode === 'online' && !roomsAvailable);
+}
+
+function changeSetupScreen(arena: boolean) {
+  choosingArena = arena;
+  updateSetupScreen();
+  window.scrollTo(0, 0);
+  if (arena) setupHeading.focus({ preventScroll: true });
+  else chooseArena.focus({ preventScroll: true });
+}
+
+chooseArena.addEventListener('click', () => changeSetupScreen(true));
+backToFighters.addEventListener('click', () => changeSetupScreen(false));
+
 function updateMode() {
-  byId('setup-heading').textContent = mode === 'campaign' ? 'Neskowin Coast Championship' : modeNames[mode];
-  byId('fighter-fields').hidden = mode === 'online';
+  updateSetupScreen();
   byId('campaign-intro').hidden = mode !== 'campaign';
-  byId('arena-fields').hidden = mode === 'campaign';
   byId('campaign-route').hidden = mode !== 'campaign';
   updateSetupPicker();
   if (mode === 'campaign') drawRoute();
   byId('join-form').hidden = mode !== 'online' || !roomsAvailable;
-  startButton.hidden = mode === 'online' && !roomsAvailable;
   startButton.replaceChildren(document.createTextNode(
     mode === 'online' ? 'Copy invite link' : mode === 'campaign' ? 'Start bout' : 'Start fight',
   ));
@@ -398,7 +420,7 @@ function startFight(
 function stopFight() {
   backToSetup(!!room);
   setStatus('');
-  startButton.focus({ preventScroll: true });
+  (startButton.hidden ? chooseArena : startButton).focus({ preventScroll: true });
 }
 
 function finish(snapshot: Snapshot) {
@@ -701,6 +723,7 @@ function showMultiplayer() {
 
 function selectMode(selected: Mode) {
   mode = selected;
+  choosingArena = false;
   gameScreen.dataset.mode = mode;
   if (mode === 'campaign') selectedBout = campaign.nextBout(progress.current.completed) ?? bouts.at(-1)!.id;
   gameBack.textContent = mode === 'local' || mode === 'online' ? 'Back to multiplayer' : 'Back to modes';
@@ -778,6 +801,7 @@ async function startPairing(kind: 'invite' | 'reply', createCode: () => Promise<
 
 byId('setup-form').addEventListener('submit', (event) => {
   event.preventDefault();
+  if (startButton.hidden) return;
   const selection = readSetup();
   if (mode === 'online') {
     const link = startPairing('invite', () => connection.invite(selection.stage, selection.rule));
