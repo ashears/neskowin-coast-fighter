@@ -1,18 +1,27 @@
 {
-  "name": "quick-game-coast",
+  "name": "neskowin-coast-fighter",
+  "version": "2.0.0",
   "private": true,
-  "version": "0.1.0",
   "type": "module",
+  "engines": { "node": ">=22" },
   "scripts": {
-    "dev": "vite --host 0.0.0.0",
-    "server": "node server.mjs",
-    "build": "tsc && vite build",
-    "preview": "vite preview --host 0.0.0.0"
+    "dev": "vite",
+    "server": "npm run build:server && node server.mjs",
+    "build:server": "tsc -p tsconfig.server.json",
+    "typecheck": "tsc --noEmit",
+    "build": "npm run typecheck && vite build",
+    "preview": "vite preview",
+    "test": "npm run build:server && node --test tests/*.test.mjs",
+    "test:browser": "npm run build && npm run build:server && playwright test"
   },
   "dependencies": {
-    "peerjs": "^1.5.5",
-    "phaser": "^3.90.0",
-    "typescript": "^5.8.3",
-    "vite": "^7.0.6"
+    "@ashears/2d-fighter-framework": "file:vendor/ashears-2d-fighter-framework-0.2.0.tgz",
+    "@ashears/fighter-relay": "file:vendor/ashears-fighter-relay-0.2.0.tgz"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.1",
+    "@types/node": "22.19.19",
+    "typescript": "5.9.3",
+    "vite": "7.3.8"
   }
 }

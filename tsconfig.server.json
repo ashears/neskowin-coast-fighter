@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": ["node"],
+    "lib": ["ES2022"],
+    "noEmit": false,
+    "rootDir": "src/coast",
+    "outDir": "dist-server"
+  },
+  "include": ["src/coast/content.ts", "src/coast/campaign.ts"]
+}

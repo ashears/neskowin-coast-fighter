@@ -1,12 +1,138 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>Neskowin Coast Fighter</title>
-  </head>
-  <body>
-    <div id="app"></div>
-    <script type="module" src="/src/main.ts"></script>
-  </body>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#16332a">
+  <meta name="description" content="An Oregon Coast fighting game. Play the campaign, challenge a friend, or fight the tide.">
+  <title>Neskowin Coast Fighter</title>
+</head>
+<body>
+  <header class="masthead">
+    <a class="brand" href="./" aria-label="Neskowin home"><span class="brand-mark" aria-hidden="true">◈</span> NESKOWIN COAST FIGHTER</a>
+    <nav class="top-nav"><a class="header-link" href="#roster">Roster</a><a class="header-link" href="#controls">Controls <span aria-hidden="true">↘</span></a></nav>
+  </header>
+  <main class="shell">
+    <div class="intro">
+      <div>
+        <p class="eyebrow">NESKOWIN, OREGON</p>
+        <h1>Neskowin <span>Coast Fighter</span></h1>
+      </div>
+      <p>Oregon Coast landmarks take the field. Fight through five campaign stops, share a keyboard, or challenge a friend in a private room.</p>
+    </div>
+    <div class="game-layout">
+      <section class="game-panel" aria-label="Arena">
+        <div class="arena-caption">
+          <span id="stage-name">Ghost Forest</span>
+          <span id="session-label">Preview</span>
+        </div>
+        <div class="arena" id="arena">
+          <div id="viewport" aria-hidden="true"></div>
+          <div id="hud" class="hud" hidden aria-hidden="true"></div>
+          <div id="arena-message" class="arena-message" hidden></div>
+          <p id="objective" class="objective" hidden></p>
+        </div>
+        <div id="touch-controls" class="touch-controls" hidden aria-label="Player one touch controls">
+          <div class="touch-group">
+            <button type="button" data-input="1" aria-label="Move left">←</button>
+            <button type="button" data-input="2" aria-label="Move right">→</button>
+            <button type="button" data-input="4" aria-label="Jump">↑</button>
+            <button type="button" data-input="8" aria-label="Down">↓</button>
+          </div>
+          <div class="touch-group">
+            <button type="button" data-input="16" aria-label="Guard">Guard</button>
+            <button type="button" data-input="32" aria-label="Light attack">Light</button>
+            <button type="button" data-input="64" aria-label="Heavy attack">Heavy</button>
+            <button type="button" data-input="128" aria-label="Special attack">Special</button>
+          </div>
+        </div>
+        <div class="arena-footer">
+          <div id="match-tools" class="match-tools" hidden>
+            <button class="quiet" id="stop" type="button">End session</button>
+            <button class="quiet" id="debug-toggle" type="button" aria-pressed="false" hidden>Show hitboxes</button>
+          </div>
+          <label class="check"><input id="sound" type="checkbox"> Sound</label>
+        </div>
+        <p id="frame-data" class="frame-data" hidden></p>
+      </section>
+      <aside class="setup" aria-label="Match setup">
+        <div id="setup-view">
+          <h2>Match setup</h2>
+          <form id="setup-form">
+            <div class="mode-picker" role="group" aria-label="Play mode">
+              <button type="button" data-mode="campaign" aria-pressed="false">Campaign</button>
+              <button type="button" data-mode="cpu" aria-pressed="true">CPU</button>
+              <button type="button" data-mode="local" aria-pressed="false">Local</button>
+              <button type="button" data-mode="training" aria-pressed="false">Training</button>
+              <button type="button" data-mode="online" aria-pressed="false">Online</button>
+            </div>
+            <div id="fighter-fields" class="pair-fields">
+              <label>Player one<select id="fighter-one"></select></label>
+              <label id="opponent-field"><span id="opponent-label">CPU fighter</span><select id="fighter-two"></select></label>
+            </div>
+            <div id="arena-fields" class="pair-fields">
+              <label>Rules<select id="rules"><option value="health">Health rounds</option><option value="stock">Three stocks</option></select></label>
+              <label>Arena<select id="stage"></select></label>
+            </div>
+            <section id="campaign-route" class="campaign-route" hidden aria-labelledby="route-heading">
+              <h3 id="route-heading">Campaign route</h3>
+              <ol id="route-stops"></ol>
+            </section>
+            <p class="hint" id="setup-hint"></p>
+            <button class="primary full" id="start" type="submit">Start fight <span aria-hidden="true">↗</span></button>
+          </form>
+          <form id="join-form" class="join-form" hidden>
+            <label>Room code<input id="room-code" name="room" placeholder="ABCD2345" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false" required></label>
+            <button class="secondary" type="submit">Join room</button>
+          </form>
+          <button class="quiet replay-link" id="replay" type="button" disabled>Replay last match <span aria-hidden="true">↻</span></button>
+        </div>
+        <section id="active-view" hidden aria-labelledby="active-heading">
+          <h2 id="active-heading"></h2>
+          <p class="hint" id="active-matchup"></p>
+          <dl id="move-guide" class="move-guide"></dl>
+        </section>
+        <section id="room-view" hidden aria-labelledby="room-heading">
+          <h2 id="room-heading">Private room</h2>
+          <div class="room-code"><output id="code-display"></output><button id="copy-code" class="quiet" type="button">Copy code</button></div>
+          <p id="room-description" class="hint"></p>
+          <ol id="room-players" class="room-players"></ol>
+          <label>Your fighter<select id="room-fighter"><option value="">Select a fighter</option></select></label>
+          <button class="primary full room-ready" id="ready" type="button" disabled>Ready</button>
+          <button class="quiet exit-room" data-leave-room type="button">Leave room</button>
+        </section>
+        <section id="result-view" hidden aria-labelledby="result-heading">
+          <h2 id="result-heading" tabindex="-1">Result</h2>
+          <p id="result-detail" class="hint"></p>
+          <button class="primary full" id="again" type="button">Rematch</button>
+          <button class="quiet exit-room" id="result-back" type="button">Back to setup</button>
+        </section>
+        <p id="status" role="status"></p>
+      </aside>
+    </div>
+    <section class="field-guide" aria-label="How to play">
+      <div class="roster-card" id="roster">
+        <h2>Meet the fighters</h2>
+        <div id="roster-list" class="roster-list"></div>
+      </div>
+      <div class="controls-card" id="controls">
+        <h2>Controls</h2>
+        <table><thead><tr><th scope="col">Action</th><th scope="col">Player one</th><th scope="col">Player two</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">Move / jump</th><td><kbd>A</kbd> <kbd>D</kbd> <kbd>W</kbd></td><td><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd></td></tr>
+            <tr><th scope="row">Drop through</th><td><kbd>S</kbd> + <kbd>W</kbd></td><td><kbd>↓</kbd> + <kbd>↑</kbd></td></tr>
+            <tr><th scope="row">Guard</th><td><kbd>R</kbd></td><td><kbd>Right Shift</kbd></td></tr>
+            <tr><th scope="row">Light / heavy / special</th><td><kbd>F</kbd> <kbd>G</kbd> <kbd>H</kbd></td><td><kbd>J</kbd> <kbd>K</kbd> <kbd>L</kbd></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+    <section class="shore-shop" aria-labelledby="shop-title">
+      <div><h2 id="shop-title">Coast shop</h2><p class="hint">Earn shells on first campaign clears. A palette changes your fighter’s accent on this screen.</p></div>
+      <div class="shop-actions"><p id="shell-balance" aria-live="polite"></p><div id="shop-palette-list"></div><p id="shop-status" role="status" hidden></p></div>
+    </section>
+  </main>
+  <footer class="site-footer">Built with the <a href="https://github.com/ashears/2d-fighter-framework">2D Fighter Framework</a></footer>
+  <script type="module" src="/src/coast/main.ts"></script>
+</body>
 </html>

@@ -30,8 +30,19 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Test simulation and campaign
+        run: npm test
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Test production game
+        run: npm run test:browser
+
       - name: Build
         run: npm run build
+        env:
+          VITE_ROOM_URL: ${{ vars.NESKOWIN_ROOM_URL }}
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
