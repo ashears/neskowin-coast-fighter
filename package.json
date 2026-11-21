@@ -3,7 +3,9 @@
   "version": "2.0.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "vite",
     "server": "npm run build:server && node server.mjs",
@@ -16,8 +18,8 @@
   },
   "dependencies": {
     "@ashears/2d-fighter-framework": "file:vendor/ashears-2d-fighter-framework-0.2.0.tgz",
-    "@ashears/fighter-relay": "file:vendor/ashears-fighter-relay-0.2.0.tgz",
-    "@ashears/fighter-direct": "file:vendor/ashears-fighter-direct-0.1.0.tgz"
+    "@ashears/fighter-direct": "file:vendor/ashears-fighter-direct-0.1.1.tgz",
+    "@ashears/fighter-relay": "file:vendor/ashears-fighter-relay-0.2.0.tgz"
   },
   "devDependencies": {
     "@playwright/test": "1.65.1",

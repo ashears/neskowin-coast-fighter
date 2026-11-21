@@ -26,7 +26,7 @@ Health matches use rounds. Stock matches run on Proposal Rock and Breakwater Rid
 
 Both players open the static game and choose **Online**. The host picks an arena and rules, then selects **Create invite**. The guest pastes that invite, selects **Generate reply**, and sends the reply back. The host pastes the reply and presses **Connect**. Once connected, each player picks a fighter and readies up.
 
-The host's browser runs the match over a WebRTC data channel. No signaling server, WebSocket relay, or third-party connection service is required. A shared Wi-Fi network is the best starting point. Different networks, VPNs, or guest Wi-Fi isolation can prevent a direct connection. Keep the host tab open during the match.
+The host's browser runs the match over a WebRTC data channel. The game uses STUN to discover addresses for direct connections between different networks. Restrictive firewalls and some VPNs or carrier networks can block direct connections. Keep the host tab open during the match.
 
 ## Code and verification
 

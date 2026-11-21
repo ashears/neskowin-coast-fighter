@@ -98,7 +98,7 @@ let renderFrame = 0;
 const connection = new DirectRoomConnection({
   id: 'neskowin', fighters: fighterIds, stages: stageIds, rules: ruleIds,
   config: coastConfig, supports: supportsMatch,
-}, onServerMessage, onDisconnect);
+}, onServerMessage, onDisconnect, [{ urls: 'stun:stun.l.google.com:19302' }]);
 const controls = new Controls(touch, () => {
   const neutral = online?.input(0);
   if (neutral) connection.send(neutral);
@@ -201,7 +201,7 @@ function updateMode() {
     cpu: '',
     local: 'Two fighters, one keyboard.',
     campaign: stops.find(({ id }) => id === selectedStop)!.objective,
-    online: roomsAvailable ? 'Play directly with a friend. Use the same Wi-Fi for the best chance of connecting.' : 'This browser does not support direct rooms.',
+    online: roomsAvailable ? 'Send an invite to a friend to play a private match.' : 'This browser does not support online rooms.',
   };
   byId('setup-hint').textContent = hints[mode];
   replayButton.disabled = !lastReplay;

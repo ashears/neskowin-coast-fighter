@@ -105,6 +105,7 @@ test('mobile campaign accepts touch input and fits without overflow', async ({ b
 });
 
 test('direct rooms play a full match with the Neskowin roster and support rematch', async ({ browser }) => {
+  test.setTimeout(45_000);
   const left = await browser.newContext();
   const right = await browser.newContext();
   try {
@@ -116,11 +117,11 @@ test('direct rooms play a full match with the Neskowin roster and support rematc
     const externalSockets = [];
     for (const page of [host, guest]) page.on('websocket', ({ url }) => externalSockets.push(url));
     await host.getByRole('button', { name: 'Create invite' }).click();
-    await expect(host.locator('#pairing-code')).toHaveValue(/^FIGHT1\./);
+    await expect(host.locator('#pairing-code')).toHaveValue(/^FIGHT1\./, { timeout: 11_000 });
     const invite = await host.locator('#pairing-code').inputValue();
     await guest.locator('#invite-input').fill(invite);
     await guest.getByRole('button', { name: 'Generate reply' }).click();
-    await expect(guest.locator('#pairing-code')).toHaveValue(/^FIGHT1\./);
+    await expect(guest.locator('#pairing-code')).toHaveValue(/^FIGHT1\./, { timeout: 11_000 });
     const reply = await guest.locator('#pairing-code').inputValue();
     await host.locator('#reply-input').fill(invite);
     await host.getByRole('button', { name: 'Connect', exact: true }).click();
