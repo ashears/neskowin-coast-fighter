@@ -24,9 +24,9 @@ Health matches use rounds. Stock matches run on Proposal Rock and Breakwater Rid
 
 ## Direct online rooms
 
-Both players open the static game and choose **Online**. The host picks an arena and rules, then selects **Create invite**. The guest pastes that invite, selects **Generate reply**, and sends the reply back. The host pastes the reply and presses **Connect**. Once connected, each player picks a fighter and readies up.
+Choose **Online**, pick an arena and rules, then select **Copy invite link**. Send the link to your friend. It opens the multiplayer lobby and prepares their reply code. Your friend sends back that code. Paste it in your lobby and press **Connect** to choose fighters and ready up.
 
-The host's browser runs the match over a WebRTC data channel. The game uses STUN to discover addresses for direct connections between different networks. Restrictive firewalls and some VPNs or carrier networks can block direct connections. Keep the host tab open during the match.
+The host's browser runs the match over a direct WebRTC data channel. Pairing uses the invite link and reply code with no signaling or ICE servers. Use the same Wi-Fi for the best chance of connecting and keep the host tab open during the match.
 
 ## Code and verification
 

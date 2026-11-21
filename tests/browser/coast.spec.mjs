@@ -104,23 +104,30 @@ test('mobile campaign accepts touch input and fits without overflow', async ({ b
   }
 });
 
-test('direct rooms play a full match with the Neskowin roster and support rematch', async ({ browser }) => {
+test('a shared link opens the Neskowin lobby, then players can play and rematch', async ({ browser }) => {
   test.setTimeout(45_000);
   const left = await browser.newContext();
   const right = await browser.newContext();
   try {
     const host = await left.newPage();
     const guest = await right.newPage();
-    const errors = await Promise.all([open(host), open(guest)]);
-    for (const page of [host, guest]) await page.getByRole('button', { name: 'Online', exact: true }).click();
+    const guestErrors = [];
+    guest.on('pageerror', ({ message }) => guestErrors.push(message));
+    const errors = [await open(host), guestErrors];
+    await host.getByRole('button', { name: 'Online', exact: true }).click();
     await host.getByRole('combobox', { name: 'Rules' }).selectOption('stock');
     const externalSockets = [];
     for (const page of [host, guest]) page.on('websocket', ({ url }) => externalSockets.push(url));
-    await host.getByRole('button', { name: 'Create invite' }).click();
-    await expect(host.locator('#pairing-code')).toHaveValue(/^FIGHT1\./, { timeout: 11_000 });
-    const invite = await host.locator('#pairing-code').inputValue();
-    await guest.locator('#invite-input').fill(invite);
-    await guest.getByRole('button', { name: 'Generate reply' }).click();
+    await left.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await host.getByRole('button', { name: 'Copy invite link' }).click();
+    await expect(host.getByRole('status')).toHaveText('Invite link copied.', { timeout: 11_000 });
+    const invite = await host.evaluate(() => navigator.clipboard.readText());
+    expect(invite).toBe(await host.locator('#pairing-code').inputValue());
+    expect(new URL(invite).hash).toMatch(/^#invite=FIGHT1\./);
+    await guest.goto(invite);
+    await expect(guest.getByRole('heading', { name: 'Multiplayer lobby' })).toBeVisible();
+    await expect(guest.locator('#setup-form')).toBeHidden();
+    expect(new URL(guest.url()).hash).toBe('');
     await expect(guest.locator('#pairing-code')).toHaveValue(/^FIGHT1\./, { timeout: 11_000 });
     const reply = await guest.locator('#pairing-code').inputValue();
     await host.locator('#reply-input').fill(invite);
@@ -192,4 +199,18 @@ test('fighter selection follows the preview and keyboard navigation reaches setu
   await expect(page.locator('#portrait-one')).toHaveAttribute('data-fighter', 'the-house');
   await expect(page.locator('#portrait-one img')).toBeVisible();
   expect(errors).toEqual([]);
+});
+
+test('invalid invites recover to online setup and the link remains selectable without clipboard access', async ({ page }) => {
+  await page.addInitScript(() => Object.defineProperty(navigator, 'clipboard', { value: undefined }));
+  await page.goto('./#invite=invalid');
+  await expect(page.getByRole('status')).toHaveText('Use the full invite link from the host.');
+  await page.getByRole('button', { name: 'Copy invite link' }).click();
+  await expect(page.getByRole('status')).toHaveText('Use Copy invite link to share your room.');
+  await page.getByRole('button', { name: 'Copy invite link' }).click();
+  const link = page.locator('#pairing-code');
+  await expect(link).toBeFocused();
+  const selection = await link.evaluate((field) => field.value.slice(field.selectionStart, field.selectionEnd));
+  expect(selection).toBe(await link.inputValue());
+  expect(new URL(selection).hash).toMatch(/^#invite=FIGHT1\./);
 });
