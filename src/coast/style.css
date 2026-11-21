@@ -240,6 +240,9 @@ label select, label input:not([type="checkbox"]), label textarea {
 .move-guide { display: grid; grid-template-columns: auto 1fr; gap: 9px 13px; margin: 14px 0; font-size: .81rem; }
 .move-guide dt { color: var(--muted); }
 .move-guide dd { margin: 0; font-weight: 750; }
+.move-guide small { display: block; margin-top: 3px; font-size: .77rem; font-weight: 450; color: var(--muted); }
+.move-cooldown { color: var(--muted); font-variant-numeric: tabular-nums; }
+#move-guide-two:not([hidden]) { border-top: 1px solid var(--rule); padding-top: 14px; }
 
 .campaign-route { margin-top: 16px; }
 .campaign-route h3 { margin: 0 0 7px; font-size: .88rem; }

@@ -1,12 +1,22 @@
 import { getProjectileDefinition, worldBox } from '@ashears/2d-fighter-framework';
 import type { Box, Facing, GameEvent, MatchDefinition, ReadonlyDeep, Seat, Snapshot } from '@ashears/2d-fighter-framework';
-import { arenas, fighterInfo, stageInfo } from './content';
+import { arenas, fighterInfo, roster, stageInfo } from './content';
 import type { FighterId, StageId } from './content';
 import { cleanupRadius, cleanupStatus } from './campaign';
 import forest from '../../public/assets/backgrounds/beach2.webp?url';
 import rock from '../../public/assets/backgrounds/beach3.jpg?url';
 import ridge from '../../public/assets/backgrounds/beach4.webp?url';
 import access from '../../public/assets/backgrounds/beach1.jpeg?url';
+import starfish from '../../public/assets/projectiles/starfish.webp?url';
+import ball from '../../public/assets/projectiles/beach-ball.svg?url';
+import shovel from '../../public/assets/projectiles/shovel.svg?url';
+import fish from '../../public/assets/projectiles/fish.svg?url';
+import chair from '../../public/assets/projectiles/chair.svg?url';
+import towel from '../../public/assets/projectiles/towel.svg?url';
+import tourist from '../../public/assets/projectiles/tourist.svg?url';
+import runner from '../../public/assets/projectiles/duck-flag-runner-cutout.webp?url';
+import quarterback from '../../public/assets/projectiles/duck-flag-quarterback-cutout.webp?url';
+import mascot from '../../public/assets/projectiles/duck-flag-mascot-motorcycle-cutout.webp?url';
 import { sprites } from './art';
 
 const width = 960;
@@ -16,6 +26,11 @@ const teamColors = ['#fbb783', '#90eddf'] as const;
 const backgrounds: Record<StageId, string> = {
   'ghost-forest': forest, 'proposal-rock': rock, breakwater: ridge, 'beach-access': access, 'king-tide': forest,
 };
+
+const projectileArt = new Map([
+  ['starfish', starfish], ['beach-ball', ball], ['shovel', shovel], ['fish', fish], ['chair', chair],
+  ['towel', towel], ['tourist', tourist], ['runner', runner], ['mascot', mascot],
+]);
 
 type Actor = Snapshot['fighters'][number];
 
@@ -191,13 +206,94 @@ export class ArenaRenderer {
       if (event.type !== 'hit' && event.type !== 'block' && event.type !== 'guard-break' && event.type !== 'stock-lost') continue;
       const target = 'target' in event ? event.target : event.seat;
       const { x, y } = snapshot.fighters[target].position;
-      const text = event.type === 'hit' ? String(event.damage) :
+      const text = event.type === 'hit' ? (event.damage === 0 ? 'GRAB' : String(event.damage)) :
         event.type === 'guard-break' ? 'GUARD BREAK' : event.type === 'stock-lost' ? 'RING OUT' : 'BLOCK';
       this.effectsQueue.push({ x, y: y - 90, born: now, text, color: event.type === 'block' ? '#dcffeb' : '#ffdeb0' });
     }
   }
 
-  private fighter(id: FighterId, actor: Actor, seat: Seat, position: Point, tick: number, cleanup: boolean) {
+  private drawSprite(asset: string, x: number, y: number, height: number, facing: Facing, rotation = 0) {
+    const image = this.getImage(asset);
+    if (!image.complete || !image.naturalWidth) return false;
+    const width = height * image.naturalWidth / image.naturalHeight;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(facing, 1);
+    ctx.rotate(rotation);
+    ctx.drawImage(image, -width / 2, -height / 2, width, height);
+    ctx.restore();
+    return true;
+  }
+
+  private abilityPose(id: FighterId, actor: Actor, position: Point) {
+    const move = actor.move;
+    if (!move) return;
+    const ctx = this.ctx;
+    const { x, y } = position;
+    const spec = roster[id].moves[move.slot];
+    const charging = move.charge?.released === false;
+    if (charging) {
+      ctx.fillStyle = '#122b24';
+      ctx.fillRect(x - 27, y - 111, 54, 6);
+      ctx.fillStyle = '#f5d379';
+      const max = spec.chargeTicks!;
+      ctx.fillRect(x - 27, y - 111, Math.max(2, 54 * move.charge!.held / max), 6);
+      if (id === 'duck-flag') this.drawSprite(quarterback, x + 37 * move.facing, y - 58, 104, move.facing);
+    }
+    if (id === 'duck-flag' && move.slot === 'light' && move.frame < spec.startup) {
+      ctx.save();
+      ctx.globalAlpha = .46 + .46 * move.frame / spec.startup;
+      this.drawSprite(runner, x + 28 * move.facing, y - 52, 96, move.facing);
+      ctx.restore();
+    }
+    if (id === 'rip-rap' && move.slot === 'heavy' && move.frame < spec.startup + spec.active) {
+      ctx.save();
+      ctx.fillStyle = '#ece4c5';
+      ctx.strokeStyle = '#504c3c';
+      ctx.lineWidth = 2;
+      ctx.globalAlpha = move.frame < spec.startup ? .27 : .9;
+      for (let i = -2; i <= 2; i++) {
+        const base = x + i * 28;
+        const top = y - 158 + Math.abs(i) * 12;
+        ctx.beginPath();
+        ctx.moveTo(base - 13, y - 55);
+        ctx.lineTo(base, top);
+        ctx.lineTo(base + 13, y - 55);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+    if (id === 'proposal-rock' && move.landedAt !== undefined && move.frame - move.landedAt < 13) {
+      const elapsed = this.reduced.matches ? 4 : move.frame - move.landedAt;
+      ctx.save();
+      ctx.globalAlpha = 1 - elapsed / 13;
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = '#f4ce8c';
+      ctx.beginPath();
+      ctx.ellipse(x, y - 6, 49 + elapsed * 4, 8 + elapsed, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (id === 'chelan' && move.followup) {
+      const remaining = move.followup.frame - move.frame;
+      const action = spec.actions[move.followup.action];
+      const duration = action.type === 'hitbox' ? action.followup?.delay ?? 1 : 1;
+      ctx.save();
+      ctx.strokeStyle = '#ffe59f';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x + 33 * move.facing, y - 52, 39, -Math.PI / 2, 1.5 * Math.PI - remaining / duration * 2 * Math.PI);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  private fighter(
+    id: FighterId, actor: Actor, seat: Seat, position: Point, tick: number, cleanup: boolean, grabRotation: number,
+  ) {
     if (actor.respawn || actor.health <= 0) return;
     const ctx = this.ctx;
     const { x, y } = position;
@@ -224,7 +320,11 @@ export class ArenaRenderer {
       ctx.fill();
       ctx.stroke();
     }
-    if (actor.move) {
+    const move = actor.move;
+    const authored = move && roster[id].moves[move.slot];
+    if (move && move.charge?.released !== false && authored && !(id === 'rip-rap' && move.slot === 'heavy')
+      && authored.actions.some((action) => action.type === 'hitbox' && !action.onLanding && !action.followup
+        && move.frame >= action.frame && move.frame < action.frame + action.duration)) {
       ctx.strokeStyle = fighterInfo[id].color;
       ctx.globalAlpha *= .64;
       ctx.lineWidth = actor.move.slot === 'light' ? 3 : 6;
@@ -234,6 +334,17 @@ export class ArenaRenderer {
       ctx.globalAlpha = 1;
     }
     ctx.scale(direction, 1);
+    if (!this.reduced.matches && !cleanup) {
+      let rotation = grabRotation * direction;
+      if (id === 'proposal-rock' && move?.slot === 'special' && authored && move.frame < authored.active) {
+        rotation = move.charge?.released ? move.frame * .47 : (move.charge?.held ?? 0) * .27;
+      } else if (id === 'proposal-rock' && move?.slot === 'heavy' && !actor.surface) {
+        rotation = Math.min(.55, move.frame * .037);
+      }
+      ctx.translate(0, -51);
+      ctx.rotate(rotation);
+      ctx.translate(0, 51);
+    }
     if (id === 'duck-flag') {
       ctx.strokeStyle = '#faf2d2';
       ctx.lineWidth = 6;
@@ -263,6 +374,7 @@ export class ArenaRenderer {
     }
     ctx.restore();
     if (!cleanup) {
+      this.abilityPose(id, actor, position);
       ctx.fillStyle = '#122b24';
       ctx.fillRect(x - 15, y - 129, 30, 17);
       ctx.fillStyle = accent;
@@ -282,11 +394,40 @@ export class ArenaRenderer {
       const shape = getProjectileDefinition(definition, projectile);
       const box = worldBox(shape.box, projectile.position, projectile.facing);
       const id = definition.fighters[projectile.owner].id as FighterId;
-      paintProjectile(ctx, id, box, projectile.facing, snapshot.tick, this.reduced.matches);
+      const { x, y, width: w, height: h } = box;
+      const appearance = shape.appearance;
+      const asset = appearance && projectileArt.get(appearance);
+      const direction = appearance === 'mascot' && projectile.velocity.x
+        ? (projectile.velocity.x < 0 ? -1 : 1) : projectile.facing;
+      const rotation = this.reduced.matches ? 0 : snapshot.tick * .12 * projectile.facing;
+      if (appearance === 'starfish') {
+        const armed = shape.lifetime - projectile.remaining >= (shape.armTicks ?? 0);
+        ctx.save();
+        ctx.strokeStyle = armed ? '#ffe8a4' : '#fddc8380';
+        ctx.fillStyle = armed ? '#f8cb7038' : '#f8cb7017';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.ellipse(x + w / 2, y + h, w / 2, 8, 0, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.stroke();
+        ctx.globalAlpha = armed ? 1 : .6;
+        this.drawSprite(starfish, x + w / 2, y + h * .46, 49, direction);
+        ctx.restore();
+        continue;
+      }
+      const height = appearance === 'runner' ? 96 : appearance === 'mascot' ? 84 : h + 9;
+      const spriteY = appearance === 'runner' ? y + h - height / 2 : y + h / 2;
+      if (!asset || !this.drawSprite(asset, x + w / 2, spriteY, height, direction,
+        id === 'chelan' ? rotation : 0)) {
+        paintProjectile(ctx, id, box, direction, snapshot.tick, this.reduced.matches);
+      }
     }
     for (const seat of [0, 1] as const) {
       if (cleanup && seat === 1) continue;
-      this.fighter(definition.fighters[seat].id as FighterId, snapshot.fighters[seat], seat, positions[seat], snapshot.tick, cleanup);
+      const other = seat === 0 ? 1 : 0;
+      const grip = definition.fighters[other].id === 'chelan' ? snapshot.fighters[other].move : null;
+      const rotation = grip?.followup ? Math.min(.55, (grip.frame + 4) * .029) * grip.facing : 0;
+      this.fighter(definition.fighters[seat].id as FighterId, snapshot.fighters[seat], seat, positions[seat], snapshot.tick, cleanup, rotation);
     }
     if (cleanup) {
       const { item } = cleanupStatus(snapshot);

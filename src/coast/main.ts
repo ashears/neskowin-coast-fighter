@@ -1,7 +1,7 @@
 import './style.css';
 import { createMatch, SNAPSHOT_VERSION, TICK_RATE } from '@ashears/2d-fighter-framework';
-import type { GameEvent, MatchDefinition, ReadonlyDeep, Seat, Snapshot } from '@ashears/2d-fighter-framework';
-import { fighterIds, coastConfig, fighterInfo, roster, ruleIds, stageIds, stageInfo, supportsMatch } from './content';
+import type { GameEvent, MatchDefinition, MoveSlot, ReadonlyDeep, Seat, Snapshot } from '@ashears/2d-fighter-framework';
+import { fighterIds, coastConfig, fighterInfo, moveNotes, roster, ruleIds, stageIds, stageInfo, supportsMatch } from './content';
 import type { FighterId, RuleId, StageId } from './content';
 import { copyInviteLink, createInviteLink, DirectRoomConnection, readInviteLink, supportsDirectRooms } from '@ashears/fighter-direct';
 import type { RoomView, ServerMessage } from '@ashears/fighter-relay/protocol';
@@ -96,7 +96,7 @@ function buildRoster() {
 let renderer: ArenaRenderer;
 let renderFrame = 0;
 const connection = new DirectRoomConnection({
-  id: 'neskowin', fighters: fighterIds, stages: stageIds, rules: ruleIds,
+  id: 'neskowin-abilities', fighters: fighterIds, stages: stageIds, rules: ruleIds,
   config: coastConfig, supports: supportsMatch,
 }, onServerMessage, onDisconnect);
 const controls = new Controls(touch, () => {
@@ -318,15 +318,12 @@ function startFight(
     byId('active-matchup').textContent = selection.stop
       ? stops.find(({ id }) => id === selection.stop)!.objective
       : `${definition.fighters[0].name} vs. ${definition.fighters[1].name}`;
-    const names = ['Light · F', 'Heavy · G', 'Special · H'];
-    byId('move-guide').replaceChildren(...(['light', 'heavy', 'special'] as const).flatMap((slot, index) => {
-      const binding = document.createElement('dt');
-      const name = document.createElement('dd');
-      binding.textContent = names[index];
-      name.textContent = definition.fighters[0].moves[slot].name;
-      return [binding, name];
-    }));
-    byId('move-guide').hidden = matchMode === 'replay';
+    const guide = byId('move-guide');
+    guide.hidden = matchMode === 'replay';
+    if (!guide.hidden) renderMoveGuide(guide, definition.fighters[0], 0, false, selection.stop !== 'proposal-rock-cleanup');
+    const secondGuide = byId('move-guide-two');
+    secondGuide.hidden = matchMode !== 'local';
+    if (!secondGuide.hidden) renderMoveGuide(secondGuide, definition.fighters[1], 1, true);
     setStatus(matchMode === 'replay' ? 'Replaying the recorded inputs.' : 'Fight in progress.');
   }
   byId('stop').focus({ preventScroll: true });
@@ -394,6 +391,34 @@ function validRoom(candidate: RoomView): candidate is RoomView & { stage: StageI
   return stageIds.includes(candidate.stage as StageId) && ruleIds.includes(candidate.rule as RuleId);
 }
 
+const moveSlots = ['light', 'heavy', 'special'] as const;
+const bindings = [['Light · F', 'Heavy · G', 'Special · H'], ['Light · J', 'Heavy · K', 'Special · L']] as const;
+
+function renderMoveGuide(
+  guide: HTMLElement, fighter: ReadonlyDeep<MatchDefinition>['fighters'][number], player: Seat, secondKeys = false, showNotes = true,
+) {
+  guide.replaceChildren(...moveSlots.flatMap((slot, index) => {
+    const binding = document.createElement('dt');
+    const detail = document.createElement('dd');
+    const cooldown = document.createElement('span');
+    binding.textContent = bindings[Number(secondKeys)][index];
+    detail.textContent = fighter.moves[slot].name;
+    cooldown.className = 'move-cooldown';
+    if (fighter.moves[slot].cooldownTicks) {
+      cooldown.dataset.move = slot;
+      cooldown.dataset.player = String(player);
+      detail.append(cooldown);
+    }
+    const note = showNotes && moveNotes[fighter.id as FighterId]?.[slot];
+    if (note) {
+      const short = document.createElement('small');
+      short.textContent = note;
+      detail.append(short);
+    }
+    return [binding, detail];
+  }));
+}
+
 function updateRoom() {
   if (!room) return;
   byId('room-description').textContent = room.status === 'playing'
@@ -412,6 +437,10 @@ function updateRoom() {
   roomFighter.disabled = room.status !== 'waiting';
   readyButton.disabled = room.status !== 'waiting' || !own?.fighter;
   readyButton.textContent = own?.ready ? 'Cancel ready' : 'Ready';
+  const fighter = own?.fighter && roster[own.fighter as FighterId];
+  const guide = byId('room-move-guide');
+  guide.hidden = !fighter;
+  if (fighter) renderMoveGuide(guide, fighter, seat);
 }
 
 function onDisconnect(detail: string) {
@@ -500,6 +529,15 @@ function updateHud(snapshot: Snapshot) {
     const [bar, guard] = side.querySelectorAll<HTMLElement>('.fill');
     bar.style.width = `${stock ? actor.stocks / 3 * 100 : actor.health / fighter.maxHealth * 100}%`;
     guard.style.width = `${fighter.maxGuard ? actor.guard / fighter.maxGuard * 100 : 0}%`;
+  }
+  const currentView = byId(online ? 'room-view' : 'active-view');
+  if (!currentView.hidden) for (const label of currentView.querySelectorAll<HTMLElement>('[data-move]')) {
+    const actor = snapshot.fighters[Number(label.dataset.player)];
+    const slot = label.dataset.move as MoveSlot;
+    const remaining = (actor.cooldowns?.[slot] ?? 0) - snapshot.tick;
+    const charging = actor.move?.slot === slot && actor.move.charge?.released === false;
+    const text = charging ? ' · Charging' : remaining > 0 ? ` · ${Math.ceil(remaining / TICK_RATE)}s` : '';
+    if (label.textContent !== text) label.textContent = text;
   }
   if (setup.stop === 'proposal-rock-cleanup') {
     const { collected, total, mistakes, item } = cleanupStatus(snapshot);

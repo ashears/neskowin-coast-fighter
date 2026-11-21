@@ -22,6 +22,17 @@ Campaign follows five stops from Beach Cleanup to King Tide. First clears unlock
 
 Health matches use rounds. Stock matches run on Proposal Rock and Breakwater Ridge with three lives, damage-scaled knockback, and respawn protection.
 
+## Signature moves
+
+| Fighter | Restored moves |
+| --- | --- |
+| Proposal Rock | Starfish Mine arms behind you. Body Slam hits when you land. Hold and release Proposal Spin Charge to control its travel. |
+| The Chelan | Beach Throw picks from six items with different arcs and impact. Chelanmania Driver grabs through guard and slams only when it connects. |
+| Rip Rap | Spike Crown catches jump-ins on either side. Breakwater Boulder rolls along surfaces and falls off ledges. |
+| Duck Flag | LaMichael Rush sends a runner down the beach. Hold and release Joey Harrington Pass to shape its arc. Mascot Moto Loop circles the target area and can hit more than once. |
+
+The in-fight move guide shows each input, hold instructions, and cooldowns. The same framework definitions run these moves in local play, campaign fights, replays, and private rooms.
+
 ## Direct online rooms
 
 Choose **Online**, pick an arena and rules, then select **Copy invite link**. Send the link to your friend. It opens the multiplayer lobby and prepares their reply code. Your friend sends back that code. Paste it in your lobby and press **Connect** to choose fighters and ready up.

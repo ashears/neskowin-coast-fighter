@@ -1,3 +1,6 @@
+import { fileURLToPath } from 'node:url';
+import { Button, createMatch, createRecording, playRecording } from '@ashears/2d-fighter-framework';
+import { coastConfig } from '../../dist-server/content.js';
 import { devices, expect, test } from '@playwright/test';
 
 async function open(page) {
@@ -144,6 +147,10 @@ test('a shared link opens the Neskowin lobby, then players can play and rematch'
     for (const page of [host, guest]) await page.getByRole('button', { name: 'Ready', exact: true }).click();
     await expect(host.locator('#session-label')).toHaveText('Online · P1');
     await expect(guest.locator('#session-label')).toHaveText('Online · P2');
+    await expect(guest.locator('#room-move-guide')).toContainText('LaMichael Rush');
+    await guest.keyboard.press('f');
+    await expect(host.locator('.hud-value').first()).toHaveText('11% · 3 ◆', { timeout: 5000 });
+    await expect(guest.locator('.hud-value').first()).toHaveText('11% · 3 ◆');
     await guest.keyboard.down('d');
     await expect(guest.getByRole('heading', { name: 'The House wins' })).toBeVisible({ timeout: 12_000 });
     await guest.keyboard.up('d');
@@ -213,4 +220,83 @@ test('invalid invites recover to online setup and the link remains selectable wi
   const selection = await link.evaluate((field) => field.value.slice(field.selectionStart, field.selectionEnd));
   expect(selection).toBe(await link.inputValue());
   expect(new URL(selection).hash).toMatch(/^#invite=FIGHT1\./);
+});
+
+test('Proposal Rock’s landing slam and Duck Flag’s hold-to-pass work from the keyboard', async ({ page }) => {
+  await page.clock.install();
+  const errors = await open(page);
+  await page.getByRole('button', { name: 'Local versus', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Player two', exact: true }).selectOption('duck-flag');
+  await page.getByRole('button', { name: 'Start fight' }).click();
+  await expect(page.locator('#move-guide')).toContainText('Starfish Mine');
+  await expect(page.locator('#move-guide-two')).toContainText('Joey Harrington Pass');
+  await expect(page.locator('#move-guide-two')).toContainText('Hold to charge');
+  const quarterback = page.waitForResponse((response) => response.ok() && response.url().includes('duck-flag-quarterback-cutout'));
+  await page.keyboard.down('k');
+  await page.clock.runFor(350);
+  await quarterback;
+  await expect(page.locator('.hud-value').first()).toHaveText('118 HP · 0');
+  await page.keyboard.up('k');
+  await page.clock.runFor(900);
+  await expect(page.locator('.hud-value').first()).toHaveText('103 HP · 0');
+  await hold(page, 'd', 520);
+  await page.keyboard.press('g');
+  await page.clock.runFor(240);
+  await expect(page.locator('.hud-value').last()).toHaveText('94 HP · 0');
+  await page.clock.runFor(500);
+  await expect(page.locator('.hud-value').last()).toHaveText('69 HP · 0');
+  expect(errors).toEqual([]);
+});
+
+test('a held touch input summons and releases Duck Flag’s quarterback', async ({ browser }) => {
+  const context = await browser.newContext({ ...devices['iPhone 13'], defaultBrowserType: 'chromium' });
+  try {
+    const page = await context.newPage();
+    await page.clock.install();
+    const errors = await open(page);
+    await page.getByRole('button', { name: 'Fight CPU', exact: true }).tap();
+    await page.getByRole('combobox', { name: 'Player one', exact: true }).selectOption('duck-flag');
+    await page.getByRole('button', { name: 'Start fight' }).tap();
+    const heavy = page.getByRole('button', { name: 'Heavy attack' });
+    await heavy.scrollIntoViewIfNeeded();
+    const { x, y, width, height } = await heavy.boundingBox();
+    const touch = await context.newCDPSession(page);
+    const quarterback = page.waitForResponse((response) => response.ok() && response.url().includes('duck-flag-quarterback-cutout'));
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: x + width / 2, y: y + height / 2 }] });
+    await page.clock.runFor(350);
+    await quarterback;
+    await expect(heavy).toHaveAttribute('data-held', 'true');
+    const charge = page.locator('#move-guide [data-move="heavy"]');
+    await expect(charge).toContainText('Charging');
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await expect(heavy).toHaveAttribute('data-held', 'false');
+    await page.clock.runFor(200);
+    await expect(charge).not.toContainText('Charging');
+    expect(errors).toEqual([]);
+  } finally {
+    await context.close();
+  }
+});
+
+test('Duck Flag summons and randomized throws produce identical Node and Chromium replays', async ({ page }) => {
+  const { definition, rules } = coastConfig(['duck-flag', 'chelan'], 'ghost-forest', 'health', 58);
+  const inputs = Array.from({ length: 288 }, (_, tick) => [
+    tick < 26 ? Button.Heavy : tick === 75 ? Button.Special : tick === 130 ? Button.Light : 0,
+    tick === 184 || tick === 235 ? Button.Heavy : 0,
+  ]);
+  const match = createMatch(definition, rules);
+  const recording = createRecording(match, inputs);
+  const expected = playRecording(definition, rules, recording);
+  expect(expected.events.filter(({ type }) => type === 'projectile').length).toBeGreaterThanOrEqual(4);
+  await page.route('**/__fighter-core/*.js', (route) => {
+    const filename = new URL(route.request().url()).pathname.split('/').at(-1);
+    const path = fileURLToPath(new URL(`../../node_modules/@ashears/2d-fighter-framework/dist/${filename}`, import.meta.url));
+    return route.fulfill({ path, contentType: 'application/javascript' });
+  });
+  await open(page);
+  const replay = await page.evaluate(async ({ definition, recording }) => {
+    const core = await import('/__fighter-core/index.js');
+    return core.playRecording(definition, core.healthRules, recording);
+  }, { definition, recording });
+  expect(replay).toEqual(expected);
 });

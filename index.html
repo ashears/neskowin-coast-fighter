@@ -100,7 +100,8 @@
         <section id="active-view" hidden aria-labelledby="active-heading">
           <h2 id="active-heading"></h2>
           <p class="hint" id="active-matchup"></p>
-          <dl id="move-guide" class="move-guide"></dl>
+          <dl id="move-guide" class="move-guide" aria-label="Player one moves"></dl>
+          <dl id="move-guide-two" class="move-guide" aria-label="Player two moves" hidden></dl>
         </section>
         <section id="pairing-view" hidden aria-labelledby="pairing-heading">
           <h2 id="pairing-heading" tabindex="-1">Multiplayer lobby</h2>
@@ -121,6 +122,7 @@
           <ol id="room-players" class="room-players"></ol>
           <label>Your fighter<select id="room-fighter"><option value="">Select a fighter</option></select></label>
           <button class="primary full room-ready" id="ready" type="button" disabled>Ready</button>
+          <dl id="room-move-guide" class="move-guide" aria-label="Your moves" hidden></dl>
           <button class="quiet exit-room" data-leave-room type="button">Leave room</button>
         </section>
         <section id="result-view" hidden aria-labelledby="result-heading">
