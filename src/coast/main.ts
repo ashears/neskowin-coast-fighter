@@ -1,17 +1,22 @@
+import '@ashears/2d-fighter-framework/arena-select.css';
+import { createArenaSelect } from '@ashears/2d-fighter-framework/arena-select';
+import '@ashears/2d-fighter-framework/fighter-select.css';
 import './style.css';
+import { createFighterSelect } from '@ashears/2d-fighter-framework/fighter-select';
+import type { FighterSelectSeat } from '@ashears/2d-fighter-framework/fighter-select';
 import { createMatch, SNAPSHOT_VERSION, TICK_RATE } from '@ashears/2d-fighter-framework';
 import type { GameEvent, MatchDefinition, MoveSlot, ReadonlyDeep, Seat, Snapshot } from '@ashears/2d-fighter-framework';
-import { fighterIds, coastConfig, fighterInfo, moveNotes, roster, ruleIds, stageIds, stageInfo, supportsMatch } from './content';
+import { arenas, fighterIds, coastConfig, fighterInfo, moveNotes, roster, ruleIds, stageIds, stageInfo, supportsMatch } from './content';
 import type { FighterId, RuleId, StageId } from './content';
 import { copyInviteLink, createInviteLink, DirectRoomConnection, readInviteLink, supportsDirectRooms } from '@ashears/fighter-direct';
 import type { RoomView, ServerMessage } from '@ashears/fighter-relay/protocol';
 import { Controls } from './input';
 import { OfflineFight, OnlineFight, randomSeed, readReplay, storeReplay } from './session';
 import type { LocalMode, Mode, SavedFight, Setup } from './session';
-import { ArenaRenderer } from './stage';
+import { ArenaRenderer, arenaBackgrounds } from './stage';
 import { putPortrait } from './art';
-import { available, cleanupStatus, completeStop, equipPalette, shellBalance, stops, unlockedFighters } from './campaign';
-import type { StopId } from './campaign';
+import { bouts, campaign, equipPalette, recordBout, shellBalance, unlockedFighters } from './campaign';
+import type { BoutId } from './campaign';
 import { loadProgress, writeProgress } from './progress';
 import { palettes } from './cosmetics';
 import type { PaletteId } from './cosmetics';
@@ -33,21 +38,27 @@ let pairingAttempt = 0;
 const resultView = byId('result-view');
 const resultHeading = byId('result-heading');
 const modeScreen = byId('mode-screen');
+const multiplayerScreen = byId('multiplayer-screen');
+const openMultiplayer = byId('open-multiplayer');
+const gameBack = byId('back-to-modes');
 const gameScreen = byId('game-screen');
-const modeButtons = [...modeScreen.querySelectorAll<HTMLButtonElement>('button[data-mode]')];
+const gamePanel = byId('game-panel');
+const modeButtons = [...document.querySelectorAll<HTMLButtonElement>('.mode-menu button[data-mode]')];
 const roomsAvailable = supportsDirectRooms();
 const modeNames: Record<Mode, string> = {
   campaign: 'Campaign', cpu: 'Fight CPU', local: 'Local versus', online: 'Online',
 };
 const rulesField = byId<HTMLSelectElement>('rules');
-const stageField = byId<HTMLSelectElement>('stage');
-const fighterOne = byId<HTMLSelectElement>('fighter-one');
-const fighterTwo = byId<HTMLSelectElement>('fighter-two');
+const arenaPicker = createArenaSelect(byId('stage'), stageIds.map((id) => ({
+  id, ...stageInfo[id], surfaces: arenas[id].surfaces,
+  image: arenaBackgrounds[id],
+})), stageIds[0], { width: 960, height: 540 }, (stage) => {
+  if (!supportsMatch(stage, rulesField.value)) rulesField.value = 'health';
+});
 const startButton = byId<HTMLButtonElement>('start');
 const replayButton = byId<HTMLButtonElement>('replay');
 const readyButton = byId<HTMLButtonElement>('ready');
 const againButton = byId<HTMLButtonElement>('again');
-const roomFighter = byId<HTMLSelectElement>('room-fighter');
 const sound = byId<HTMLInputElement>('sound');
 const touch = byId('touch-controls');
 const hud = byId('hud');
@@ -55,20 +66,36 @@ const info = byId('arena-message');
 const objective = byId('objective');
 
 const progress = { current: loadProgress() };
-let selectedStop: StopId = stops[progress.current.completed.length]?.id ?? stops[0].id;
-let nextCampaignStop: StopId | undefined;
+let selectedBout: BoutId = bouts[0].id;
+let nextCampaignBout: BoutId | undefined;
+let campaignFighter: FighterId = 'proposal-rock';
 
-function populateFighters(select: HTMLSelectElement, ids: FighterId[], preferred: string, placeholder = false) {
-  const options = ids.map((id) => new Option(roster[id].name, id));
-  if (placeholder) options.unshift(new Option('Select a fighter', ''));
-  select.replaceChildren(...options);
-  select.value = ids.includes(preferred as FighterId) ? preferred : placeholder ? '' : ids[0];
+function boutDetails(id: BoutId) {
+  return bouts.find((bout) => bout.id === id)!;
 }
 
-populateFighters(fighterOne, [...fighterIds], 'proposal-rock');
-populateFighters(fighterTwo, [...fighterIds], 'chelan');
-populateFighters(roomFighter, [...fighterIds], '', true);
-stageField.replaceChildren(...stageIds.map((id) => new Option(stageInfo[id].name, id)));
+const versusFighters: [FighterId, FighterId] = ['proposal-rock', 'chelan'];
+const fighters = fighterIds.map((id) => ({ id, name: roster[id].name, detail: fighterInfo[id].role }));
+
+function renderPortrait(element: HTMLElement, id: FighterId) {
+  element.style.setProperty('--fighter-accent', fighterInfo[id].color);
+  putPortrait(element, id);
+}
+
+const setupPicker = createFighterSelect(byId('fighter-fields'), {
+  fighters, renderPortrait,
+  onPick(player, fighter) {
+    if (mode === 'campaign') campaignFighter = fighter;
+    else versusFighters[player === 'p1' ? 0 : 1] = fighter;
+    updateSetupPicker();
+  },
+});
+const roomPicker = createFighterSelect(byId('room-fighter'), {
+  fighters, renderPortrait,
+  onPick(_player, fighter) {
+    connection.send({ type: 'select', fighter });
+  },
+});
 
 function buildRoster() {
   const list = byId('roster-list');
@@ -93,7 +120,7 @@ function buildRoster() {
   }
 }
 
-let renderer: ArenaRenderer;
+let renderer: ArenaRenderer | undefined;
 let renderFrame = 0;
 const connection = new DirectRoomConnection({
   id: 'neskowin-abilities', fighters: fighterIds, stages: stageIds, rules: ruleIds,
@@ -121,21 +148,21 @@ let accumulator = 0;
 
 function readSetup(): Setup {
   if (mode === 'campaign') {
-    const stop = stops.find(({ id }) => id === selectedStop)!;
+    const bout = boutDetails(selectedBout);
     return {
-      stage: stop.stage, rule: stop.rule, fighters: [fighterOne.value as FighterId, stop.opponent],
-      stop: stop.id, seed: randomSeed(),
+      stage: bout.stage, rule: bout.rule, fighters: [campaignFighter, bout.opponent],
+      bout: bout.id, seed: randomSeed(),
     };
   }
   return {
-    stage: stageField.value as StageId, rule: rulesField.value as RuleId,
-    fighters: [fighterOne.value as FighterId, fighterTwo.value as FighterId],
+    stage: arenaPicker.value, rule: rulesField.value as RuleId,
+    fighters: [...versusFighters],
     seed: randomSeed(),
   };
 }
 
 function applyPalette() {
-  renderer.setPalette(online ? seat : 0, palettes.find(({ id }) => id === progress.current.equipped)?.color);
+  renderer?.setPalette(online ? seat : 0, palettes.find(({ id }) => id === progress.current.equipped)?.color);
 }
 
 function drawShop(focus?: string) {
@@ -184,73 +211,107 @@ function setStatus(status: string) {
 }
 
 function updateMode() {
-  byId('setup-heading').textContent = modeNames[mode];
+  byId('setup-heading').textContent = mode === 'campaign' ? 'Neskowin Coast Championship' : modeNames[mode];
   byId('fighter-fields').hidden = mode === 'online';
-  byId('opponent-field').hidden = mode === 'campaign';
+  byId('campaign-intro').hidden = mode !== 'campaign';
   byId('arena-fields').hidden = mode === 'campaign';
   byId('campaign-route').hidden = mode !== 'campaign';
-  populateFighters(fighterOne, mode === 'campaign' ? unlockedFighters(progress.current) : [...fighterIds], fighterOne.value);
+  updateSetupPicker();
   if (mode === 'campaign') drawRoute();
   byId('join-form').hidden = mode !== 'online' || !roomsAvailable;
   startButton.hidden = mode === 'online' && !roomsAvailable;
-  byId('opponent-label').textContent = mode === 'local' ? 'Player two' : 'CPU fighter';
   startButton.replaceChildren(document.createTextNode(
-    mode === 'online' ? 'Copy invite link' : mode === 'campaign' ? 'Play stop' : 'Start fight',
+    mode === 'online' ? 'Copy invite link' : mode === 'campaign' ? 'Start bout' : 'Start fight',
   ));
   const hints: Record<Mode, string> = {
     cpu: '',
     local: 'Two fighters, one keyboard.',
-    campaign: stops.find(({ id }) => id === selectedStop)!.objective,
+    campaign: '',
     online: roomsAvailable ? 'Send an invite to a friend to play a private match.' : 'This browser does not support online rooms.',
   };
   byId('setup-hint').textContent = hints[mode];
   replayButton.disabled = !lastReplay;
+  replayButton.hidden = mode === 'campaign';
 }
 
 function drawRoute(focus = false) {
-  const route = byId('route-stops');
-  route.replaceChildren(...stops.map((stop, index) => {
+  const selected = boutDetails(selectedBout);
+  const completed = progress.current.completed;
+  byId('bracket-progress').textContent = completed.length === bouts.length
+    ? 'Tournament Champion' : `${completed.length} of ${bouts.length} bouts cleared`;
+  byId('rival-heading').textContent = roster[selected.opponent].name;
+  byId('bout-format').textContent = `${stageInfo[selected.stage].name} · ${selected.format}`;
+  byId('bout-tip').textContent = selected.tip;
+  putPortrait(byId('rival-portrait'), selected.opponent);
+  const route = byId('route-bouts');
+  route.replaceChildren(...bouts.map((bout) => {
     const row = document.createElement('li');
     const button = document.createElement('button');
+    const state = campaign.status(completed, bout.id);
     button.type = 'button';
-    button.disabled = !available(progress.current, stop.id);
-    button.dataset.stop = stop.id;
+    button.disabled = state === 'locked';
+    button.dataset.bout = bout.id;
+    button.dataset.state = state;
     const label = document.createElement('span');
-    label.textContent = stop.title;
+    label.textContent = bout.title;
     const status = document.createElement('span');
-    status.className = 'stop-state';
-    status.textContent = progress.current.completed.includes(stop.id) ? 'Cleared' : button.disabled ? 'Locked' : String(index + 1).padStart(2, '0');
+    status.className = 'bout-state';
+    status.textContent = state === 'cleared' ? 'Cleared' : state === 'locked' ? 'Locked' : 'Ready';
     button.append(label, status);
-    button.setAttribute('aria-pressed', String(stop.id === selectedStop));
+    button.setAttribute('aria-pressed', String(bout.id === selectedBout));
     button.addEventListener('click', () => {
-      selectedStop = stop.id;
+      selectedBout = bout.id;
       drawRoute(true);
-      byId('setup-hint').textContent = stop.objective;
-      drawPreview();
     });
     row.append(button);
     return row;
   }));
-  if (focus) route.querySelector<HTMLElement>(`[data-stop="${selectedStop}"]`)?.focus();
+  if (focus) route.querySelector<HTMLElement>(`[data-bout="${selectedBout}"]`)?.focus();
 }
 
-function drawPreview() {
-  setup = readSetup();
-  putPortrait(byId('portrait-one'), setup.fighters[0]);
-  putPortrait(byId('portrait-two'), setup.fighters[1]);
-  const config = coastConfig(setup.fighters, setup.stage, setup.rule, setup.seed);
-  const preview = createMatch(config.definition, config.rules);
-  definition = preview.definition;
-  currentSnapshot = preview.snapshot();
-  renderer.stage(setup.stage, true);
-  applyPalette();
-  byId('stage-name').textContent = stageInfo[setup.stage].name;
-  byId('session-label').textContent = 'Preview';
-  hud.hidden = true;
-  info.hidden = true;
+function updateSetupPicker() {
+  const campaignMode = mode === 'campaign';
+  const seats: FighterSelectSeat<FighterId>[] = [
+    { id: 'p1', label: 'Player one', badge: 'P1', fighter: campaignMode ? campaignFighter : versusFighters[0] },
+  ];
+  if (!campaignMode) seats.push({
+    id: 'p2', label: mode === 'local' ? 'Player two' : 'CPU fighter',
+    badge: mode === 'local' ? 'P2' : 'CPU', fighter: versusFighters[1],
+  });
+  const unlocked = unlockedFighters(progress.current);
+  setupPicker.update(seats, campaignMode ? fighterIds.filter((id) => !unlocked.includes(id)) : []);
 }
+
+const arena = byId('arena');
+const matchTools = byId('match-tools');
+const fullscreenButton = byId<HTMLButtonElement>('fullscreen');
+
+function setFightView(playing: boolean) {
+  matchTools.hidden = !playing;
+  fullscreenButton.hidden = !playing || !document.fullscreenEnabled || !gamePanel.requestFullscreen;
+  if (!playing && document.fullscreenElement === gamePanel) {
+    void document.exitFullscreen().catch(() => {});
+  }
+}
+
+fullscreenButton.addEventListener('click', async () => {
+  try {
+    if (document.fullscreenElement === gamePanel) await document.exitFullscreen();
+    else await gamePanel.requestFullscreen();
+  } catch {
+    // The arena already fills the viewport when browser fullscreen is unavailable.
+  }
+  if (!matchTools.hidden) arena.focus({ preventScroll: true });
+});
+document.addEventListener('fullscreenchange', () => {
+  const fullscreen = document.fullscreenElement === gamePanel;
+  fullscreenButton.textContent = fullscreen ? 'Exit fullscreen' : 'Fullscreen';
+  if (fullscreen && matchTools.hidden) void document.exitFullscreen().catch(() => {});
+});
 
 function clearFight() {
+  cancelAnimationFrame(renderFrame);
+  gamePanel.hidden = true;
   offline = undefined;
   online = undefined;
   controls.active = false;
@@ -259,7 +320,6 @@ function clearFight() {
   info.hidden = true;
   objective.hidden = true;
   touch.hidden = true;
-  byId('match-tools').hidden = true;
 }
 
 function backToSetup(exitRoom = false) {
@@ -269,10 +329,10 @@ function backToSetup(exitRoom = false) {
     room = undefined;
   }
   clearFight();
+  setFightView(false);
   privateResult = false;
   showView('setup');
   updateMode();
-  drawPreview();
 }
 
 function startLocal(selection: Setup, localMode: LocalMode | 'replay', saved?: SavedFight) {
@@ -283,7 +343,9 @@ function startLocal(selection: Setup, localMode: LocalMode | 'replay', saved?: S
   }
   connection.close();
   setStatus('');
-  offline = new OfflineFight(selection, localMode, saved?.recording);
+  const bout = selection.bout && localMode === 'campaign'
+    ? campaign.startBout(progress.current.completed, selection.bout, selection.fighters[0], selection.seed) : undefined;
+  offline = new OfflineFight(selection, localMode, saved?.recording, bout);
   startFight(selection, offline.match.definition, offline.match.snapshot(), localMode);
 }
 
@@ -299,11 +361,14 @@ function startFight(
   controls.active = matchMode !== 'replay';
   controls.local = matchMode === 'local';
   const labels = { cpu: 'CPU fight', local: 'Local versus', campaign: 'Campaign', replay: 'Replay', online: `Online · P${seat + 1}` };
+  gamePanel.hidden = false;
+  renderer ??= new ArenaRenderer(byId('viewport'));
   byId('stage-name').textContent = stageInfo[selection.stage].name;
   byId('session-label').textContent = labels[matchMode];
-  byId('match-tools').hidden = false;
+  byId('stop').textContent = matchMode === 'online' ? 'Leave room' : 'End session';
+  setFightView(true);
   touch.hidden = !capturePointer || !controls.active || controls.local;
-  objective.hidden = matchMode !== 'campaign';
+  objective.hidden = true;
   renderer.stage(selection.stage, true);
   applyPalette();
   buildHud();
@@ -314,20 +379,20 @@ function startFight(
     setStatus('Fight in progress.');
   } else {
     showView('active');
-    byId('active-heading').textContent = labels[matchMode];
-    byId('active-matchup').textContent = selection.stop
-      ? stops.find(({ id }) => id === selection.stop)!.objective
+    byId('active-heading').textContent = selection.bout ? boutDetails(selection.bout).title : labels[matchMode];
+    byId('active-matchup').textContent = selection.bout
+      ? boutDetails(selection.bout).tip
       : `${definition.fighters[0].name} vs. ${definition.fighters[1].name}`;
     const guide = byId('move-guide');
     guide.hidden = matchMode === 'replay';
-    if (!guide.hidden) renderMoveGuide(guide, definition.fighters[0], 0, false, selection.stop !== 'proposal-rock-cleanup');
+    if (!guide.hidden) renderMoveGuide(guide, definition.fighters[0], 0);
     const secondGuide = byId('move-guide-two');
     secondGuide.hidden = matchMode !== 'local';
     if (!secondGuide.hidden) renderMoveGuide(secondGuide, definition.fighters[1], 1, true);
     setStatus(matchMode === 'replay' ? 'Replaying the recorded inputs.' : 'Fight in progress.');
   }
-  byId('stop').focus({ preventScroll: true });
-  if (capturePointer) byId('arena').scrollIntoView({ block: 'start' });
+  arena.focus({ preventScroll: true });
+  renderFrame = requestAnimationFrame(render);
 }
 
 function stopFight() {
@@ -343,7 +408,7 @@ function finish(snapshot: Snapshot) {
   controls.active = false;
   controls.release();
   touch.hidden = true;
-  byId('match-tools').hidden = true;
+  setFightView(false);
   const winner = snapshot.winner;
   const mirrorMatch = definition.fighters[0].id === definition.fighters[1].id;
   resultHeading.textContent = winner === 'draw' || winner === null
@@ -354,25 +419,33 @@ function finish(snapshot: Snapshot) {
   againButton.textContent = viewingReplay ? 'Replay again' : 'Rematch';
   againButton.disabled = false;
   let progressNote = '';
-  if (setup.stop) {
+  againButton.hidden = false;
+  const backButton = byId('result-back');
+  backButton.hidden = false;
+  if (setup.bout) {
     const previous = progress.current;
-    progress.current = completeStop(previous, setup.stop, winner === 0);
-    const visited = stops.findIndex(({ id }) => id === setup.stop);
-    const unlocked = stops[visited];
-    nextCampaignStop = winner === 0 ? stops[visited + 1]?.id : undefined;
-    resultHeading.textContent = winner === 0 ? 'Stop cleared' : winner === 'draw' ? 'Draw' : 'Try this stop again';
-    byId('result-detail').textContent = winner === 0
-      ? `${unlocked.title} cleared.${'unlock' in unlocked && previous !== progress.current ? ` ${roster[unlocked.unlock].name} joined your campaign roster.` : ''}`
-      : unlocked.objective;
-    againButton.textContent = nextCampaignStop ? 'Next stop' : winner === 0 ? 'Replay stop' : 'Retry stop';
-    byId('result-back').textContent = 'Back to campaign';
-    if (previous !== progress.current) {
+    const bout = boutDetails(setup.bout);
+    progress.current = recordBout(previous, bout.id, snapshot);
+    const cleared = progress.current !== previous;
+    const won = winner === 0;
+    const next = bouts[bouts.indexOf(bout) + 1];
+    const champion = won && !next;
+    nextCampaignBout = won ? next?.id : undefined;
+    const score = byId('result-detail').textContent;
+    resultHeading.textContent = champion ? 'Tournament Champion' : won ? 'Bout won' : winner === 'draw' ? 'Bout drawn' : 'Bout lost';
+    byId('result-detail').textContent = won
+      ? `${champion ? 'You defeated The Ocean and won the Neskowin Coast Championship.' : score}${'unlock' in bout && cleared ? ` ${roster[bout.unlock].name} joined your campaign roster.` : ''}`
+      : `${score} ${bout.tip}`;
+    againButton.textContent = champion ? 'View bracket' : won ? 'Next bout' : 'Retry bout';
+    backButton.hidden = champion;
+    backButton.textContent = 'Back to bracket';
+    if (cleared) {
       const payout = shellBalance(progress.current) - shellBalance(previous);
-      progressNote = writeProgress(progress.current) ? `Earned ${payout} shells.` : 'Progress is available until you close this page.';
+      progressNote = writeProgress(progress.current) ? `Earned ${payout} shells.` : `Earned ${payout} shells for this session.`;
       drawShop();
     }
   } else {
-    byId('result-back').textContent = privateResult ? 'Leave room' : 'Back to setup';
+    backButton.textContent = privateResult ? 'Leave room' : 'Back to setup';
   }
   byId('session-label').textContent = viewingReplay ? 'Replay complete' : 'Match complete';
   showView('result');
@@ -395,7 +468,7 @@ const moveSlots = ['light', 'heavy', 'special'] as const;
 const bindings = [['Light · F', 'Heavy · G', 'Special · H'], ['Light · J', 'Heavy · K', 'Special · L']] as const;
 
 function renderMoveGuide(
-  guide: HTMLElement, fighter: ReadonlyDeep<MatchDefinition>['fighters'][number], player: Seat, secondKeys = false, showNotes = true,
+  guide: HTMLElement, fighter: ReadonlyDeep<MatchDefinition>['fighters'][number], player: Seat, secondKeys = false,
 ) {
   guide.replaceChildren(...moveSlots.flatMap((slot, index) => {
     const binding = document.createElement('dt');
@@ -409,7 +482,7 @@ function renderMoveGuide(
       cooldown.dataset.player = String(player);
       detail.append(cooldown);
     }
-    const note = showNotes && moveNotes[fighter.id as FighterId]?.[slot];
+    const note = moveNotes[fighter.id as FighterId]?.[slot];
     if (note) {
       const short = document.createElement('small');
       short.textContent = note;
@@ -433,8 +506,12 @@ function updateRoom() {
     return item;
   }));
   const own = room.players[seat];
-  roomFighter.value = own?.fighter ?? '';
-  roomFighter.disabled = room.status !== 'waiting';
+  byId('room-fighter').hidden = room.status !== 'waiting';
+  roomPicker.update(room.players.map((player, index) => ({
+    id: String(index), label: index === seat ? 'Your fighter' : 'Opponent',
+    badge: index === seat ? 'You' : 'Rival', fighter: player?.fighter as FighterId | undefined,
+    editable: index === seat && room?.status === 'waiting',
+  })));
   readyButton.disabled = room.status !== 'waiting' || !own?.fighter;
   readyButton.textContent = own?.ready ? 'Cancel ready' : 'Ready';
   const fighter = own?.fighter && roster[own.fighter as FighterId];
@@ -463,7 +540,7 @@ function onServerMessage(message: ServerMessage) {
         if (firstView) {
           pairingCode.value = '';
           replyInput.value = '';
-          roomFighter.focus({ preventScroll: true });
+          roomPicker.focus();
         }
       } else if (room.status === 'finished' && room.players[seat]?.rematch) {
         againButton.disabled = true;
@@ -539,26 +616,18 @@ function updateHud(snapshot: Snapshot) {
     const text = charging ? ' · Charging' : remaining > 0 ? ` · ${Math.ceil(remaining / TICK_RATE)}s` : '';
     if (label.textContent !== text) label.textContent = text;
   }
-  if (setup.stop === 'proposal-rock-cleanup') {
-    const { collected, total, mistakes, item } = cleanupStatus(snapshot);
-    objective.textContent = item ? `${collected}/${total} collected · ${3 - mistakes} tries · ${item.debris} · ${item.label}` : `${total}/${total} collected`;
-    const sides = hud.querySelectorAll<HTMLElement>('.hud-side');
-    sides[0].querySelector('.hud-value')!.textContent = `${collected}/${total} collected`;
-    sides[1].querySelector('.hud-badge')!.textContent = 'Mistakes';
-    sides[1].querySelector('.hud-value')!.textContent = `${mistakes}/3`;
-    const meters = hud.querySelectorAll<HTMLElement>('.bar .fill');
-    meters[0].style.width = `${collected / total * 100}%`;
-    meters[1].style.width = `${mistakes / 3 * 100}%`;
-    for (const meter of hud.querySelectorAll<HTMLElement>('.guard-bar')) meter.hidden = true;
-  } else if (setup.stop) {
-    objective.textContent = setup.stop === 'ocean-boss' && snapshot.fighters[1].move
-      ? definition.fighters[1].moves[snapshot.fighters[1].move.slot].name
-      : setup.stop === 'ocean-boss' ? 'Survive the tide' : stops.find(({ id }) => id === setup.stop)!.title;
+  if (setup.bout === 'king-tide-championship') {
+    const move = snapshot.fighters[1].move;
+    const attack = move && definition.fighters[1].moves[move.slot];
+    const warning = snapshot.phase === 'playing' && move && attack
+      && move.slot !== 'light' && move.frame < attack.startup ? `${attack.name} incoming · Jump` : '';
+    if (objective.textContent !== warning) objective.textContent = warning;
+    objective.hidden = !warning;
   }
 }
 
 function react(snapshot: Snapshot, events: readonly GameEvent[], now: number) {
-  renderer.effects(snapshot, events, now);
+  renderer?.effects(snapshot, events, now);
   for (const event of events) {
     if (event.type === 'round-end' && snapshot.phase !== 'finished') {
       info.textContent = event.winner === 'draw' ? 'Round drawn' : `${definition.fighters[event.winner].name} takes the round`;
@@ -580,6 +649,7 @@ function react(snapshot: Snapshot, events: readonly GameEvent[], now: number) {
 }
 
 function render(now: number) {
+  if (!renderer) return;
   const stepTime = 1000 / TICK_RATE;
   accumulator = Math.min(accumulator + now - clock, stepTime * 5);
   clock = now;
@@ -590,7 +660,7 @@ function render(now: number) {
       if (!outcome) {
         backToSetup();
         setStatus('The recording ended before a match result.');
-        break;
+        return;
       }
       currentSnapshot = outcome.snapshot;
       react(currentSnapshot, outcome.events, now);
@@ -609,67 +679,69 @@ function render(now: number) {
     renderer.draw(definition, currentSnapshot, now, display.positions);
     if (currentSnapshot.phase === 'finished') finish(currentSnapshot);
   } else {
-    renderer.draw(definition, currentSnapshot, now, undefined, setup.stop === 'proposal-rock-cleanup' && !!offline);
+    renderer.draw(definition, currentSnapshot, now);
   }
   renderFrame = requestAnimationFrame(render);
 }
 
-function setScreen(playing: boolean) {
-  document.body.dataset.screen = playing ? 'game' : 'modes';
-  modeScreen.hidden = playing;
+function setScreen(screen: 'modes' | 'multiplayer' | 'game') {
+  const playing = screen === 'game';
+  document.body.dataset.screen = screen;
+  modeScreen.hidden = screen !== 'modes';
+  multiplayerScreen.hidden = screen !== 'multiplayer';
   gameScreen.hidden = !playing;
   for (const id of ['setup-link', 'game-nav', 'game-footer']) byId(id).hidden = !playing;
   window.scrollTo(0, 0);
 }
 
+function showMultiplayer() {
+  setScreen('multiplayer');
+  byId('multiplayer-heading').focus({ preventScroll: true });
+}
+
 function selectMode(selected: Mode) {
   mode = selected;
-  setScreen(true);
-  if (!renderer) {
-    renderer = new ArenaRenderer(byId('viewport'));
-    buildRoster();
-  }
+  gameScreen.dataset.mode = mode;
+  if (mode === 'campaign') selectedBout = campaign.nextBout(progress.current.completed) ?? bouts.at(-1)!.id;
+  gameBack.textContent = mode === 'local' || mode === 'online' ? 'Back to multiplayer' : 'Back to modes';
+  setScreen('game');
+  if (!byId('roster-list').hasChildNodes()) buildRoster();
   showView('setup');
   setStatus('');
   updateMode();
-  drawPreview();
   drawShop();
-  clock = performance.now();
-  accumulator = 0;
-  renderFrame = requestAnimationFrame(render);
   byId('setup-heading').focus({ preventScroll: true });
 }
 
-function returnToModes() {
+function returnFromGame() {
   pairingAttempt++;
-  cancelAnimationFrame(renderFrame);
   if (room) connection.send({ type: 'leave' });
   connection.close();
   room = undefined;
   clearFight();
+  setFightView(false);
   privateResult = false;
-  setScreen(false);
+  setScreen(mode === 'local' || mode === 'online' ? 'multiplayer' : 'modes');
   modeButtons.find((button) => button.dataset.mode === mode)?.focus({ preventScroll: true });
 }
 
 for (const button of modeButtons) {
   if (button.dataset.mode === 'online' && !roomsAvailable) {
     button.disabled = true;
-    button.textContent = 'Online unavailable';
+    byId('online-description').textContent = 'This browser does not support online rooms.';
   }
   button.addEventListener('click', () => selectMode(button.dataset.mode as Mode));
 }
 
-byId('back-to-modes').addEventListener('click', returnToModes);
-
-for (const select of [fighterOne, fighterTwo]) select.addEventListener('change', drawPreview);
-rulesField.addEventListener('change', () => {
-  if (!supportsMatch(stageField.value, rulesField.value)) stageField.value = 'proposal-rock';
-  drawPreview();
+gameBack.addEventListener('click', returnFromGame);
+openMultiplayer.addEventListener('click', showMultiplayer);
+byId('multiplayer-back').addEventListener('click', () => {
+  setScreen('modes');
+  openMultiplayer.focus({ preventScroll: true });
 });
-stageField.addEventListener('change', () => {
-  if (!supportsMatch(stageField.value, rulesField.value)) rulesField.value = 'health';
-  drawPreview();
+
+rulesField.addEventListener('change', () => {
+  if (!supportsMatch(arenaPicker.value, rulesField.value)) arenaPicker.setValue('proposal-rock');
 });
 
 async function startPairing(kind: 'invite' | 'reply', createCode: () => Promise<string>) {
@@ -739,9 +811,6 @@ byId('cancel-pairing').addEventListener('click', () => {
   connection.close();
   stopFight();
 });
-roomFighter.addEventListener('change', () => {
-  if (roomFighter.value) connection.send({ type: 'select', fighter: roomFighter.value });
-});
 readyButton.addEventListener('click', () => connection.send({ type: 'ready', ready: !room?.players[seat]?.ready }));
 for (const button of document.querySelectorAll('[data-leave-room]')) button.addEventListener('click', stopFight);
 byId('copy-code').addEventListener('click', async () => {
@@ -758,7 +827,10 @@ byId('copy-code').addEventListener('click', async () => {
   }
 });
 byId('stop').addEventListener('click', stopFight);
-byId('result-back').addEventListener('click', stopFight);
+byId('result-back').addEventListener('click', () => {
+  if (offline?.mode === 'campaign') selectedBout = campaign.nextBout(progress.current.completed) ?? selectedBout;
+  stopFight();
+});
 replayButton.addEventListener('click', () => { if (lastReplay) startLocal(lastReplay.setup, 'replay', lastReplay); });
 againButton.addEventListener('click', () => {
   if (privateResult && online) {
@@ -767,10 +839,12 @@ againButton.addEventListener('click', () => {
     setStatus('Waiting for the other player to rematch.');
     connection.send({ type: 'rematch', match });
   } else if (offline?.mode === 'campaign') {
-    selectedStop = nextCampaignStop ?? setup.stop!;
-    const next = readSetup();
-    next.fighters[0] = setup.fighters[0];
-    startLocal(next, 'campaign');
+    if (setup.bout === bouts.at(-1)!.id && currentSnapshot.winner === 0) {
+      stopFight();
+      return;
+    }
+    selectedBout = nextCampaignBout ?? setup.bout!;
+    startLocal(readSetup(), 'campaign');
   } else if (offline?.mode === 'replay' && lastReplay) {
     startLocal(lastReplay.setup, 'replay', lastReplay);
   } else if (offline && offline.mode !== 'replay') {

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#efebe0">
+  <meta name="theme-color" content="#0b171c">
   <meta name="description" content="An Oregon Coast fighting game. Play the campaign, challenge a friend, or fight the tide.">
   <title>Neskowin Coast Fighter</title>
 </head>
@@ -20,22 +20,37 @@
     <div class="mode-menu">
       <button type="button" data-mode="campaign">Campaign</button>
       <button type="button" data-mode="cpu">Fight CPU</button>
-      <button type="button" data-mode="local">Local versus</button>
-      <button type="button" data-mode="online">Online</button>
+      <button type="button" id="open-multiplayer">Multiplayer</button>
+    </div>
+  </main>
+  <main id="multiplayer-screen" class="mode-screen multiplayer-screen" aria-labelledby="multiplayer-heading" hidden>
+    <button class="quiet" id="multiplayer-back" type="button">Back to modes</button>
+    <h2 id="multiplayer-heading" tabindex="-1">Multiplayer</h2>
+    <div class="mode-menu">
+      <button type="button" data-mode="local" aria-labelledby="local-title" aria-describedby="local-description">
+        <span id="local-title">Local versus</span>
+        <span id="local-description" class="mode-detail">Two players on one keyboard.</span>
+      </button>
+      <button type="button" data-mode="online" aria-labelledby="online-title" aria-describedby="online-description">
+        <span id="online-title">Online</span>
+        <span id="online-description" class="mode-detail">Invite a friend to a private match.</span>
+      </button>
     </div>
   </main>
   <main class="shell" id="game-screen" hidden>
     <div class="game-layout">
-      <section class="game-panel" aria-label="Arena">
+      <section id="game-panel" class="game-panel" aria-label="Arena" hidden>
         <div class="arena-caption">
-          <span id="stage-name">Ghost Forest</span>
-          <span id="session-label">Preview</span>
+          <span id="stage-name"></span>
+          <span id="session-label"></span>
         </div>
-        <div class="arena" id="arena">
-          <div id="viewport" aria-hidden="true"></div>
-          <div id="hud" class="hud" hidden role="group" aria-label="Match score"></div>
-          <div id="arena-message" class="arena-message" hidden></div>
-          <p id="objective" class="objective" hidden></p>
+        <div class="arena-fit">
+          <div class="arena" id="arena" tabindex="-1" role="group" aria-label="Fight arena">
+            <div id="viewport" aria-hidden="true"></div>
+            <div id="hud" class="hud" hidden role="group" aria-label="Match score"></div>
+            <div id="arena-message" class="arena-message" hidden></div>
+            <p id="objective" class="objective" role="status" hidden></p>
+          </div>
         </div>
         <div id="touch-controls" class="touch-controls" hidden role="group" aria-label="Player one touch controls">
           <div class="touch-group directions">
@@ -57,10 +72,11 @@
           </div>
           <div class="quick-controls" aria-label="Player one keyboard shortcuts">
             <span><kbd>A</kbd> <kbd>D</kbd> Move</span>
-            <span><kbd>W</kbd> Jump</span>
+            <span><kbd>W</kbd> / <kbd>Space</kbd> Jump</span>
             <span><kbd>F</kbd> <kbd>G</kbd> <kbd>H</kbd> Attack</span>
             <span><kbd>R</kbd> Guard</span>
           </div>
+          <button class="quiet" id="fullscreen" type="button" hidden>Fullscreen</button>
           <label class="check"><input id="sound" type="checkbox"> Sound</label>
         </div>
       </section>
@@ -68,28 +84,28 @@
         <div id="setup-view">
           <h2 id="setup-heading" tabindex="-1">Match setup</h2>
           <form id="setup-form">
-            <button class="primary full" id="start" type="submit">Start fight</button>
-            <div id="fighter-fields" class="pair-fields portraits">
-              <label>
-                <span class="selection-label">Player one</span>
-                <span class="selection-art" id="portrait-one" aria-hidden="true"></span>
-                <select id="fighter-one"></select>
-              </label>
-              <label id="opponent-field">
-                <span class="selection-label" id="opponent-label">CPU fighter</span>
-                <span class="selection-art" id="portrait-two" aria-hidden="true"></span>
-                <select id="fighter-two"></select>
-              </label>
-            </div>
+            <section id="campaign-route" class="campaign-route" hidden aria-labelledby="route-heading">
+              <div id="campaign-intro" class="campaign-intro" hidden>
+                <p id="bracket-progress"></p>
+                <div class="rival-card">
+                  <span id="rival-portrait" class="selection-art" aria-hidden="true"></span>
+                  <div>
+                    <h3 id="rival-heading"></h3>
+                    <p id="bout-format"></p>
+                  </div>
+                </div>
+                <p id="bout-tip" class="hint"></p>
+              </div>
+              <h3 id="route-heading">Tournament bracket</h3>
+              <ol id="route-bouts"></ol>
+            </section>
+            <div id="fighter-fields"></div>
             <div id="arena-fields" class="pair-fields">
               <label>Rules<select id="rules"><option value="health">Health rounds</option><option value="stock">Three stocks</option></select></label>
-              <label>Arena<select id="stage"></select></label>
+              <div id="stage"></div>
             </div>
-            <section id="campaign-route" class="campaign-route" hidden aria-labelledby="route-heading">
-              <h3 id="route-heading">Campaign route</h3>
-              <ol id="route-stops"></ol>
-            </section>
             <p class="hint" id="setup-hint"></p>
+            <button class="primary full" id="start" type="submit">Start fight</button>
           </form>
           <form id="join-form" class="join-form" hidden>
             <label>Invite link<textarea id="invite-input" rows="2" maxlength="75000" autocomplete="off" spellcheck="false" required></textarea></label>
@@ -120,7 +136,7 @@
           <h2 id="room-heading">Private room</h2>
           <p id="room-description" class="hint"></p>
           <ol id="room-players" class="room-players"></ol>
-          <label>Your fighter<select id="room-fighter"><option value="">Select a fighter</option></select></label>
+          <div id="room-fighter"></div>
           <button class="primary full room-ready" id="ready" type="button" disabled>Ready</button>
           <dl id="room-move-guide" class="move-guide" aria-label="Your moves" hidden></dl>
           <button class="quiet exit-room" data-leave-room type="button">Leave room</button>
@@ -143,7 +159,7 @@
         <h2>Controls</h2>
         <table><thead><tr><th scope="col">Action</th><th scope="col">Player one</th><th scope="col">Player two</th></tr></thead>
           <tbody>
-            <tr><th scope="row">Move / jump</th><td><kbd>A</kbd> <kbd>D</kbd> <kbd>W</kbd></td><td><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd></td></tr>
+            <tr><th scope="row">Move / jump</th><td><kbd>A</kbd> <kbd>D</kbd> <kbd>W</kbd> or <kbd>Space</kbd></td><td><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd></td></tr>
             <tr><th scope="row">Drop through</th><td><kbd>S</kbd> + <kbd>W</kbd></td><td><kbd>↓</kbd> + <kbd>↑</kbd></td></tr>
             <tr><th scope="row">Guard</th><td><kbd>R</kbd></td><td><kbd>Right Shift</kbd></td></tr>
             <tr><th scope="row">Light / heavy / special</th><td><kbd>F</kbd> <kbd>G</kbd> <kbd>H</kbd></td><td><kbd>J</kbd> <kbd>K</kbd> <kbd>L</kbd></td></tr>

@@ -11,7 +11,9 @@ npm ci
 npm run dev
 ```
 
-Campaign follows five stops from Beach Cleanup to King Tide. First clears unlock campaign fighters and earn shells for local cosmetic palettes. All six fighters are available for versus. The game also supports CPU, two-player shared-keyboard versus, touch controls for solo and online play, and replay of the last completed versus match in the tab.
+Choose **Campaign** to enter the Neskowin Coast Championship. Start with Proposal Rock or Duck Flag and work through five bouts, from The Chelan at Ghost Forest to The Ocean at King Tide. Jump throws, use the ledges, recover offstage, and look for an opening after Sneaker Wave. First wins unlock rivals and earn shells to spend on palettes in the Coast shop. The bracket saves locally and opens at your next bout.
+
+Under **Multiplayer**, choose **Local versus** to share a keyboard or **Online** to invite a friend. All six fighters are available for CPU and versus matches. Touch controls work in solo and online play. Replay the last completed versus match from its setup screen.
 
 | Action | Player one or online | Local player two |
 | --- | --- | --- |
@@ -35,14 +37,14 @@ The in-fight move guide shows each input, hold instructions, and cooldowns. The 
 
 ## Direct online rooms
 
-Choose **Online**, pick an arena and rules, then select **Copy invite link**. Send the link to your friend. It opens the multiplayer lobby and prepares their reply code. Your friend sends back that code. Paste it in your lobby and press **Connect** to choose fighters and ready up.
+Choose **Multiplayer** and then **Online**, pick an arena and rules, then select **Copy invite link**. Send the link to your friend. It opens the multiplayer lobby and prepares their reply code. Your friend sends back that code. Paste it in your lobby and press **Connect** to choose fighters and ready up.
 
 The host's browser runs the match over a direct WebRTC data channel. Pairing uses the invite link and reply code with no signaling or ICE servers. Use the same Wi-Fi for the best chance of connecting and keep the host tab open during the match.
 
 ## Code and verification
 
 - `src/coast/content.ts` declares the roster, stages, moves, and match configurations used by both browser and relay.
-- `src/coast/campaign.ts` implements campaign progression and the cleanup and tide-survival objectives with framework rule hooks. Older campaign clears are imported when valid. Wins and cosmetic purchases persist in local storage.
+- `src/coast/campaign.ts` authors the bracket, rival profiles, and rewards on top of the framework campaign API. Tournament progress and cosmetic purchases use a fresh local save.
 - `src/coast/session.ts` connects controls and recordings to the framework. The Canvas renderer uses the existing coastal photographs and fighter art.
 - `vendor/` pins the framework core, room protocol, and direct-room package. A clean install works independently of the framework checkout.
 
@@ -53,4 +55,4 @@ npx playwright install chromium
 npm run test:browser
 ```
 
-The tests run every supported fighter and arena combination, check custom objectives and save migration, replay an actual match, and exercise the production build on desktop and mobile. The browser suite also runs a complete match between two private-room clients with a rematch and disconnect.
+The tests run every supported fighter and arena combination, play through all five tournament bouts, and exercise the production build on desktop and mobile. Browser coverage includes tournament retries, unlocks, reload, the championship result, versus replay, and a private-room match and rematch.

@@ -17,9 +17,9 @@
     "test:browser": "npm run build && npm run build:server && playwright test"
   },
   "dependencies": {
-    "@ashears/2d-fighter-framework": "file:vendor/ashears-2d-fighter-framework-0.3.0.tgz",
-    "@ashears/fighter-direct": "file:vendor/ashears-fighter-direct-0.3.0.tgz",
-    "@ashears/fighter-relay": "file:vendor/ashears-fighter-relay-0.3.0.tgz"
+    "@ashears/2d-fighter-framework": "file:vendor/ashears-2d-fighter-framework-0.4.0.tgz",
+    "@ashears/fighter-direct": "file:vendor/ashears-fighter-direct-0.4.0.tgz",
+    "@ashears/fighter-relay": "file:vendor/ashears-fighter-relay-0.4.0.tgz"
   },
   "devDependencies": {
     "@playwright/test": "1.65.1",

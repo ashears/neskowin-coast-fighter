@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Button, createMatch, createRecording, playRecording, snapshotChecksum } from '@ashears/2d-fighter-framework';
-import { campaignFight, completeStop, normalizeProgress, stops, unlockedFighters, available, cleanupStatus, shellBalance, equipPalette } from '../dist-server/campaign.js';
+import { bouts, campaign, recordBout, normalizeProgress, unlockedFighters, shellBalance, equipPalette } from '../dist-server/campaign.js';
+import { playBout } from './tournament-player.mjs';
 import { coastConfig, fighterIds, stageIds, ruleIds, supportsMatch } from '../dist-server/content.js';
 
 test('every supported roster and arena combination runs on the packaged core', () => {
@@ -24,73 +25,65 @@ test('every supported roster and arena combination runs on the packaged core', (
   }
 });
 
-test('campaign save migration validates sequential clears and unlocks exactly once', () => {
+const qualifier = bouts[0];
+const kingTide = bouts.at(-1);
+const win = { phase: 'finished', winner: 0 };
+
+test('the tournament validates progression, unlocks fighters, and pays each prize once', () => {
   const initial = normalizeProgress(null);
   assert.deepEqual(unlockedFighters(initial), ['proposal-rock', 'duck-flag']);
-  assert.equal(available(initial, 'chelan-opener'), false);
-  assert.equal(completeStop(initial, 'ocean-boss', true), initial);
-  assert.equal(completeStop(initial, 'proposal-rock-cleanup', false), initial);
-  const cleared = completeStop(initial, 'proposal-rock-cleanup', true);
-  assert.equal(completeStop(cleared, 'proposal-rock-cleanup', true), cleared);
-  assert(available(cleared, 'chelan-opener'));
+  assert.equal(campaign.status(initial.completed, bouts[1].id), 'locked');
+  assert.equal(recordBout(initial, kingTide.id, win), initial);
+  assert.equal(recordBout(initial, qualifier.id, { ...win, winner: 1 }), initial);
+  const cleared = recordBout(initial, qualifier.id, win);
+  assert.equal(recordBout(cleared, qualifier.id, win), cleared);
+  assert.equal(campaign.status(cleared.completed, bouts[1].id), 'available');
   assert.deepEqual(unlockedFighters(cleared), ['proposal-rock', 'duck-flag', 'chelan']);
-  assert.deepEqual(normalizeProgress({ completedLevelIds: ['ocean-boss', 'proposal-rock-cleanup', 'unknown', 'proposal-rock-cleanup'] }), cleared);
-  const completed = stops.reduce((progress, { id }) => completeStop(progress, id, true), initial);
+  assert.deepEqual(normalizeProgress({ completed: [qualifier.id, kingTide.id] }), cleared);
+  assert.deepEqual(normalizeProgress({ completed: ['proposal-rock-cleanup'] }), initial);
+  const completed = bouts.reduce((progress, { id }) => recordBout(progress, id, win), initial);
   assert.equal(new Set(unlockedFighters(completed)).size, fighterIds.length);
+  assert.equal(shellBalance(completed), 240);
 });
 
-function runCleanup(seed) {
-  const { match } = campaignFight('proposal-rock-cleanup', 'proposal-rock', seed);
-  const commands = [Button.Light, Button.Heavy, Button.Special, Button.Light, Button.Heavy];
-  for (const command of commands) {
-    const { item } = cleanupStatus(match.snapshot());
-    while (Math.abs(match.snapshot().fighters[0].position.x - item.x) > 15) {
-      const current = match.snapshot().fighters[0].position.x;
-      match.step([current < item.x ? Button.Right : Button.Left, 0]);
-      assert(match.snapshot().phase === 'playing');
-    }
-    match.step([command, 0]);
-    match.step([0, 0]);
+test('all five bouts are winnable through combat and introduce their signature attacks', () => {
+  for (const bout of bouts) {
+    const result = playBout(bout, 'duck-flag');
+    assert.equal(result.state.winner, 0, bout.title);
+    assert(result.playerHits > 0, bout.title);
+    if (bout.rule === 'stock') assert.equal(result.state.fighters[1].stocks, 0);
+    else assert(result.wins.every(({ health }) => health === 0), bout.title);
+    if (bout !== qualifier) assert(result.attacks.has('special'), bout.title);
   }
-  return match.snapshot();
-}
-
-test('beach cleanup tracks exact fresh attacks and fails after three mistakes', () => {
-  const solved = runCleanup(8);
-  assert.equal(solved.winner, 0);
-  assert.equal(cleanupStatus(solved).collected, 5);
-  assert.deepEqual(runCleanup(8), solved);
-  const { match } = campaignFight('proposal-rock-cleanup', 'duck-flag', 8);
-  for (let mistake = 1; mistake <= 3; mistake++) {
-    match.step([Button.Heavy, 0]);
-    assert.equal(cleanupStatus(match.snapshot()).mistakes, mistake);
-    if (mistake < 3) {
-      match.step([Button.Heavy, 0]);
-      assert.equal(cleanupStatus(match.snapshot()).mistakes, mistake);
-      match.step([0, 0]);
-    }
-  }
-  assert.equal(match.snapshot().winner, 1);
 });
 
-test('King Tide telegraphs and launches waves and rewards surviving the timer', () => {
-  const { match, opponent } = campaignFight('ocean-boss', 'proposal-rock', 1);
-  let telegraphs = 0;
-  let waves = 0;
-  for (let tick = 0; tick <= 32 * 60 && match.snapshot().phase === 'playing'; tick++) {
-    const snapshot = match.snapshot();
-    const me = snapshot.fighters[0];
-    const approaching = snapshot.projectiles.some(({ position }) => position.x > me.position.x && position.x - me.position.x < 188);
-    const frame = approaching && me.surface ? Button.Jump : 0;
-    for (const event of match.step([frame, opponent(snapshot)]).events) {
-      if (event.type === 'attack' && event.seat === 1) telegraphs++;
-      if (event.type === 'projectile' && event.seat === 1) waves++;
+test('both starters can knock out The Chelan and The Ocean', () => {
+  for (const seed of [1, 17, 867]) {
+    for (const player of ['proposal-rock', 'duck-flag']) {
+      for (const [bout, rounds] of [[qualifier, 1], [kingTide, 2]]) {
+        const { state, wins } = playBout(bout, player, seed);
+        assert.equal(state.winner, 0, `${bout.title} with ${player}`);
+        assert.equal(wins.length, rounds);
+        assert(wins.every(({ health, ticks }) => health === 0 && ticks < 50 * 60));
+      }
     }
   }
-  assert(telegraphs > 5);
-  assert.equal(waves, telegraphs);
-  assert.equal(match.snapshot().winner, 0);
-  assert.equal(match.snapshot().roundTick, 32 * 60);
+});
+
+test('King Tide launches both waves and the second round starts its next attack sooner', () => {
+  const result = playBout(kingTide, 'proposal-rock');
+  assert(result.firstWaveWarning > 0);
+  assert(result.attacks.has('heavy') && result.attacks.has('special'));
+  assert.equal(playBout(kingTide, 'proposal-rock', 17, true).state.winner, 1);
+  const cleared = bouts.slice(0, -1).map(({ id }) => id);
+  const { match, opponent } = campaign.startBout(cleared, kingTide.id, 'proposal-rock', 17);
+  const sample = (round) => {
+    const snapshot = structuredClone(match.snapshot());
+    snapshot.fighters[1].position.x = 560;
+    return opponent({ ...snapshot, round, roundTick: 74, tick: 74 });
+  };
+  assert.equal(sample(1), 0);
+  assert.equal(sample(2), Button.Special);
 });
 
 test('normal matches replay exactly', () => {
@@ -110,7 +103,7 @@ test('shell purchases are affordable, idempotent, and compatible with persisted 
   const fresh = normalizeProgress(null);
   assert.equal(shellBalance(fresh), 0);
   assert.equal(equipPalette(fresh, 'daybreak'), fresh);
-  const cleared = completeStop(fresh, 'proposal-rock-cleanup', true);
+  const cleared = recordBout(fresh, qualifier.id, win);
   assert.equal(shellBalance(cleared), 60);
   const bought = equipPalette(cleared, 'daybreak');
   assert.deepEqual(bought.owned, ['daybreak']);

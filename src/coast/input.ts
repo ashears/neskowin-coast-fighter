@@ -2,7 +2,7 @@ import { Button } from '@ashears/2d-fighter-framework';
 import type { InputFrame, Seat } from '@ashears/2d-fighter-framework';
 
 const firstKeys: Record<string, InputFrame> = {
-  KeyA: Button.Left, KeyD: Button.Right, KeyW: Button.Jump, KeyS: Button.Down,
+  KeyA: Button.Left, KeyD: Button.Right, KeyW: Button.Jump, Space: Button.Jump, KeyS: Button.Down,
   KeyR: Button.Guard, KeyF: Button.Light, KeyG: Button.Heavy, KeyH: Button.Special,
 };
 const secondKeys: Record<string, InputFrame> = {
@@ -54,7 +54,10 @@ export class Controls {
     if (!this.active || !(event.code in firstKeys || (this.local && event.code in secondKeys))) return;
     const currentTarget = event.target instanceof HTMLElement ? event.target : null;
     if (down && (event.metaKey || event.ctrlKey || event.altKey || currentTarget?.matches('input, select, textarea, [contenteditable]'))) return;
-    event.preventDefault();
+    const activatesPageControl = event.code === 'Space'
+      && currentTarget?.closest('button, a[href], input, select, textarea, [contenteditable]');
+    if (down && activatesPageControl) return;
+    if (!activatesPageControl) event.preventDefault();
     if (down) this.keys.add(event.code);
     else this.keys.delete(event.code);
     this.capture();

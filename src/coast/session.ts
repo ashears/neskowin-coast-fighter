@@ -1,10 +1,9 @@
 import { createCpu, createMatch, createRecording, isInputFrame, SNAPSHOT_VERSION } from '@ashears/2d-fighter-framework';
-import type { GameEvent, InputFrame, Json, Match, Pair, Recording, Snapshot } from '@ashears/2d-fighter-framework';
+import type { CampaignFight, GameEvent, InputFrame, Json, Match, Pair, Recording, Snapshot } from '@ashears/2d-fighter-framework';
 import { fighterIds, coastConfig, fighterInfo, ruleIds, stageIds, supportsMatch } from './content';
 import type { FighterId, RuleId, StageId } from './content';
 import type { Controls } from './input';
-import { campaignFight } from './campaign';
-import type { StopId } from './campaign';
+import type { BoutId } from './campaign';
 
 export type LocalMode = 'cpu' | 'local' | 'campaign';
 export type Mode = LocalMode | 'online';
@@ -13,7 +12,7 @@ export interface Setup {
   rule: RuleId;
   fighters: [FighterId, FighterId];
   seed: number;
-  stop?: StopId;
+  bout?: BoutId;
 }
 
 export interface SavedFight { setup: Setup; recording: Recording }
@@ -52,11 +51,11 @@ export class OfflineFight {
   private readonly opponent?: (snapshot: Snapshot) => InputFrame;
   private cursor = 0;
 
-  constructor(readonly setup: Setup, readonly mode: LocalMode | 'replay', private readonly replay?: Recording) {
-    if (mode === 'campaign' && setup.stop) {
-      const chapter = campaignFight(setup.stop, setup.fighters[0], setup.seed);
-      this.match = chapter.match;
-      this.opponent = chapter.opponent;
+  constructor(readonly setup: Setup, readonly mode: LocalMode | 'replay', private readonly replay?: Recording, campaign?: CampaignFight) {
+    if (mode === 'campaign') {
+      if (!campaign) throw new Error('Campaign requires a bout');
+      this.match = campaign.match;
+      this.opponent = campaign.opponent;
       return;
     }
     const { definition, rules } = coastConfig(setup.fighters, setup.stage, setup.rule, setup.seed);

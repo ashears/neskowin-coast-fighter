@@ -1,13 +1,11 @@
-import { campaignKey, legacyKey, normalizeProgress } from './campaign';
+import { campaignKey, normalizeProgress } from './campaign';
 import type { Progress } from './campaign';
 
 export function loadProgress(): Progress {
-  for (const key of [campaignKey, legacyKey]) {
-    try {
-      const raw = localStorage.getItem(key);
-      if (raw !== null) return normalizeProgress(JSON.parse(raw));
-    } catch { /* A broken or unavailable save still permits a fresh campaign. */ }
-  }
+  try {
+    const raw = localStorage.getItem(campaignKey);
+    if (raw !== null) return normalizeProgress(JSON.parse(raw));
+  } catch { /* The tournament remains playable when storage is unavailable. */ }
   return normalizeProgress(null);
 }
 

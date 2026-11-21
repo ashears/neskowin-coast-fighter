@@ -2,7 +2,6 @@ import { getProjectileDefinition, worldBox } from '@ashears/2d-fighter-framework
 import type { Box, Facing, GameEvent, MatchDefinition, ReadonlyDeep, Seat, Snapshot } from '@ashears/2d-fighter-framework';
 import { arenas, fighterInfo, roster, stageInfo } from './content';
 import type { FighterId, StageId } from './content';
-import { cleanupRadius, cleanupStatus } from './campaign';
 import forest from '../../public/assets/backgrounds/beach2.webp?url';
 import rock from '../../public/assets/backgrounds/beach3.jpg?url';
 import ridge from '../../public/assets/backgrounds/beach4.webp?url';
@@ -23,7 +22,7 @@ const width = 960;
 const height = 540;
 type Point = { x: number; y: number };
 const teamColors = ['#fbb783', '#90eddf'] as const;
-const backgrounds: Record<StageId, string> = {
+export const arenaBackgrounds: Record<StageId, string> = {
   'ghost-forest': forest, 'proposal-rock': rock, breakwater: ridge, 'beach-access': access, 'king-tide': forest,
 };
 
@@ -166,7 +165,7 @@ export class ArenaRenderer {
     const image = new Image();
     this.images.set(url, image);
     image.addEventListener('load', () => {
-      if (backgrounds[this.currentStage] === url) this.repaint();
+      if (arenaBackgrounds[this.currentStage] === url) this.repaint();
     }, { once: true });
     image.src = url;
     return image;
@@ -177,7 +176,7 @@ export class ArenaRenderer {
     const stage = this.currentStage;
     ctx.fillStyle = '#284637';
     ctx.fillRect(0, 0, width, height);
-    const image = this.getImage(backgrounds[stage]);
+    const image = this.getImage(arenaBackgrounds[stage]);
     if (image.complete && image.naturalWidth) cover(ctx, image);
     const veil = ctx.createLinearGradient(0, 0, 0, height);
     veil.addColorStop(0, stage === 'king-tide' ? '#071d33b0' : '#172c3285');
@@ -292,7 +291,7 @@ export class ArenaRenderer {
   }
 
   private fighter(
-    id: FighterId, actor: Actor, seat: Seat, position: Point, tick: number, cleanup: boolean, grabRotation: number,
+    id: FighterId, actor: Actor, seat: Seat, position: Point, tick: number, grabRotation: number,
   ) {
     if (actor.respawn || actor.health <= 0) return;
     const ctx = this.ctx;
@@ -334,7 +333,7 @@ export class ArenaRenderer {
       ctx.globalAlpha = 1;
     }
     ctx.scale(direction, 1);
-    if (!this.reduced.matches && !cleanup) {
+    if (!this.reduced.matches) {
       let rotation = grabRotation * direction;
       if (id === 'proposal-rock' && move?.slot === 'special' && authored && move.frame < authored.active) {
         rotation = move.charge?.released ? move.frame * .47 : (move.charge?.held ?? 0) * .27;
@@ -345,18 +344,20 @@ export class ArenaRenderer {
       ctx.rotate(rotation);
       ctx.translate(0, 51);
     }
+    const sprite = sprites[id];
+    const image = this.getImage(sprite.url);
     if (id === 'duck-flag') {
       ctx.strokeStyle = '#faf2d2';
       ctx.lineWidth = 6;
       ctx.beginPath(); ctx.moveTo(-19, -2); ctx.lineTo(-19, -109); ctx.stroke();
-      ctx.fillStyle = '#477e50';
-      ctx.beginPath(); ctx.moveTo(-19, -108); ctx.quadraticCurveTo(18, -122, 51, -97);
-      ctx.lineTo(41, -74); ctx.quadraticCurveTo(11, -93, -19, -84); ctx.closePath(); ctx.fill();
-      ctx.fillStyle = '#f6db80';
-      ctx.beginPath(); ctx.ellipse(9, -96, 12, 7, -.3, 0, Math.PI * 2); ctx.fill();
+      if (image.complete && image.naturalWidth) {
+        // Extend the flag in the facing direction while keeping its lettering readable.
+        ctx.scale(direction, 1);
+        const left = direction === 1 ? -19 : 19 - sprite.width;
+        const height = sprite.width * image.naturalHeight / image.naturalWidth;
+        ctx.drawImage(image, left, -113, sprite.width, height);
+      }
     } else {
-      const sprite = sprites[id];
-      const image = this.getImage(sprite.url);
       const spriteHeight = id === 'ocean' ? 115 : 100;
       if (image.complete && image.naturalWidth) {
         ctx.shadowColor = '#071b19';
@@ -373,20 +374,17 @@ export class ArenaRenderer {
       }
     }
     ctx.restore();
-    if (!cleanup) {
-      this.abilityPose(id, actor, position);
-      ctx.fillStyle = '#122b24';
-      ctx.fillRect(x - 15, y - 129, 30, 17);
-      ctx.fillStyle = accent;
-      ctx.textAlign = 'center';
-      ctx.font = '700 11px ui-monospace, monospace';
-      ctx.fillText(`P${seat + 1}`, x, y - 117);
-    }
+    this.abilityPose(id, actor, position);
+    ctx.fillStyle = '#122b24';
+    ctx.fillRect(x - 15, y - 129, 30, 17);
+    ctx.fillStyle = accent;
+    ctx.textAlign = 'center';
+    ctx.font = '700 11px ui-monospace, monospace';
+    ctx.fillText(`P${seat + 1}`, x, y - 117);
   }
 
   draw(definition: ReadonlyDeep<MatchDefinition>, snapshot: Snapshot, now: number,
     positions: readonly [Readonly<Point>, Readonly<Point>] = [snapshot.fighters[0].position, snapshot.fighters[1].position],
-    cleanup = false,
   ) {
     const ctx = this.ctx;
     ctx.drawImage(this.back, 0, 0);
@@ -423,26 +421,10 @@ export class ArenaRenderer {
       }
     }
     for (const seat of [0, 1] as const) {
-      if (cleanup && seat === 1) continue;
       const other = seat === 0 ? 1 : 0;
       const grip = definition.fighters[other].id === 'chelan' ? snapshot.fighters[other].move : null;
       const rotation = grip?.followup ? Math.min(.55, (grip.frame + 4) * .029) * grip.facing : 0;
-      this.fighter(definition.fighters[seat].id as FighterId, snapshot.fighters[seat], seat, positions[seat], snapshot.tick, cleanup, rotation);
-    }
-    if (cleanup) {
-      const { item } = cleanupStatus(snapshot);
-      if (item) {
-        const y = definition.stage.spawns[0].y;
-        ctx.fillStyle = '#d8f2b43d';
-        ctx.fillRect(item.x - cleanupRadius, y - 3, cleanupRadius * 2, 5);
-        ctx.font = '700 15px ui-monospace, monospace';
-        ctx.textAlign = 'center';
-        ctx.fillStyle = '#173328';
-        ctx.fillRect(item.x - 54, y - 53, 108, 25);
-        ctx.fillStyle = '#ecffd1';
-        ctx.fillText(item.label, item.x, y - 36);
-        ctx.fillRect(item.x - 7, y - 17, 14, 15);
-      }
+      this.fighter(definition.fighters[seat].id as FighterId, snapshot.fighters[seat], seat, positions[seat], snapshot.tick, rotation);
     }
     this.effectsQueue = this.effectsQueue.filter(({ born }) => now - born < 490);
     for (const effect of this.effectsQueue) {
