@@ -10,6 +10,7 @@ import { RoomConnection } from './online';
 import { OfflineFight, OnlineFight, randomSeed, readReplay, storeReplay } from './session';
 import type { LocalMode, Mode, SavedFight, Setup } from './session';
 import { ArenaRenderer } from './stage';
+import { putPortrait } from './art';
 import { available, cleanupStatus, completeStop, equipPalette, shellBalance, stops, unlockedFighters } from './campaign';
 import type { StopId } from './campaign';
 import { loadProgress, writeProgress } from './progress';
@@ -66,18 +67,17 @@ for (const id of fighterIds) {
   item.className = 'fighter-note';
   const marker = document.createElement('div');
   marker.className = 'fighter-icon';
-  marker.style.setProperty('--fighter-accent', fighterInfo[id].color);
   marker.setAttribute('aria-hidden', 'true');
-  marker.textContent = roster[id].name.split(' ').filter((word) => word !== 'The').map((word) => word[0]).join('');
+  putPortrait(marker, id);
   const copy = document.createElement('div');
   const title = document.createElement('h3');
   const role = document.createElement('span');
   title.textContent = roster[id].name;
   role.textContent = fighterInfo[id].role;
-  title.append(role);
+  role.className = 'fighter-role';
   const detail = document.createElement('p');
   detail.textContent = fighterInfo[id].description;
-  copy.append(title, detail);
+  copy.append(title, role, detail);
   item.append(marker, copy);
   byId('roster-list').append(item);
 }
@@ -176,21 +176,19 @@ function updateMode() {
   byId('campaign-route').hidden = mode !== 'campaign';
   populateFighters(fighterOne, mode === 'campaign' ? unlockedFighters(progress.current) : [...fighterIds], fighterOne.value);
   if (mode === 'campaign') drawRoute();
-  byId('join-form').hidden = mode !== 'online';
+  const roomsAvailable = location.protocol !== 'https:' || Boolean(import.meta.env.VITE_ROOM_URL);
+  byId('join-form').hidden = mode !== 'online' || !roomsAvailable;
+  startButton.hidden = mode === 'online' && !roomsAvailable;
   byId('opponent-label').textContent = mode === 'local' ? 'Player two' : mode === 'training' ? 'Training dummy' : 'CPU fighter';
   startButton.replaceChildren(document.createTextNode(
     mode === 'online' ? 'Create private room' : mode === 'training' ? 'Start training' : mode === 'campaign' ? 'Play stop' : 'Start fight',
   ));
-  const arrow = document.createElement('span');
-  arrow.setAttribute('aria-hidden', 'true');
-  arrow.textContent = '↗';
-  startButton.append(arrow);
   const hints: Record<Mode, string> = {
-    cpu: 'Fight a CPU opponent. Touch controls are available on mobile.',
+    cpu: '',
     local: 'Two fighters, one keyboard.',
     training: 'Practice against a stationary dummy and inspect move frames.',
     campaign: stops.find(({ id }) => id === selectedStop)!.objective,
-    online: 'Create a room to share its code, or join a friend below.',
+    online: roomsAvailable ? 'Share a room code to play with a friend.' : 'Online rooms are unavailable on this site.',
   };
   byId('setup-hint').textContent = hints[mode];
   replayButton.disabled = !lastReplay;
@@ -225,6 +223,8 @@ function drawRoute(focus = false) {
 
 function drawPreview() {
   setup = readSetup();
+  putPortrait(byId('portrait-one'), setup.fighters[0]);
+  putPortrait(byId('portrait-two'), setup.fighters[1]);
   const config = coastConfig(setup.fighters, setup.stage, setup.rule, setup.seed);
   const preview = createMatch(config.definition, config.rules);
   definition = preview.definition;
@@ -382,7 +382,7 @@ function finish(snapshot: Snapshot) {
   info.hidden = true;
   objective.hidden = true;
   setStatus(progressNote);
-  resultHeading.focus({ preventScroll: true });
+  resultHeading.focus({ preventScroll: !matchMedia('(max-width: 780px)').matches });
 }
 
 function save(fight: SavedFight) {

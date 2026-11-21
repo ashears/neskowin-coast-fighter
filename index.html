@@ -3,23 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#16332a">
+  <meta name="theme-color" content="#efebe0">
   <meta name="description" content="An Oregon Coast fighting game. Play the campaign, challenge a friend, or fight the tide.">
   <title>Neskowin Coast Fighter</title>
 </head>
 <body>
+  <a class="skip-link" href="#setup">Skip to game setup</a>
   <header class="masthead">
-    <a class="brand" href="./" aria-label="Neskowin home"><span class="brand-mark" aria-hidden="true">◈</span> NESKOWIN COAST FIGHTER</a>
-    <nav class="top-nav"><a class="header-link" href="#roster">Roster</a><a class="header-link" href="#controls">Controls <span aria-hidden="true">↘</span></a></nav>
+    <h1 class="wordmark">Neskowin <span>Coast Fighter</span></h1>
+    <nav class="top-nav" aria-label="Game guide">
+      <a href="#roster">Fighters</a><a href="#controls">Controls</a><a href="#shop">Shop</a>
+    </nav>
   </header>
   <main class="shell">
-    <div class="intro">
-      <div>
-        <p class="eyebrow">NESKOWIN, OREGON</p>
-        <h1>Neskowin <span>Coast Fighter</span></h1>
-      </div>
-      <p>Oregon Coast landmarks take the field. Fight through five campaign stops, share a keyboard, or challenge a friend in a private room.</p>
-    </div>
     <div class="game-layout">
       <section class="game-panel" aria-label="Arena">
         <div class="arena-caption">
@@ -28,16 +24,16 @@
         </div>
         <div class="arena" id="arena">
           <div id="viewport" aria-hidden="true"></div>
-          <div id="hud" class="hud" hidden aria-hidden="true"></div>
+          <div id="hud" class="hud" hidden role="group" aria-label="Match score"></div>
           <div id="arena-message" class="arena-message" hidden></div>
           <p id="objective" class="objective" hidden></p>
         </div>
-        <div id="touch-controls" class="touch-controls" hidden aria-label="Player one touch controls">
-          <div class="touch-group">
-            <button type="button" data-input="1" aria-label="Move left">←</button>
-            <button type="button" data-input="2" aria-label="Move right">→</button>
-            <button type="button" data-input="4" aria-label="Jump">↑</button>
-            <button type="button" data-input="8" aria-label="Down">↓</button>
+        <div id="touch-controls" class="touch-controls" hidden role="group" aria-label="Player one touch controls">
+          <div class="touch-group directions">
+            <button type="button" data-input="4" class="jump" aria-label="Jump">↑</button>
+            <button type="button" data-input="1" class="left" aria-label="Move left">←</button>
+            <button type="button" data-input="8" class="down" aria-label="Down">↓</button>
+            <button type="button" data-input="2" class="right" aria-label="Move right">→</button>
           </div>
           <div class="touch-group">
             <button type="button" data-input="16" aria-label="Guard">Guard</button>
@@ -51,11 +47,17 @@
             <button class="quiet" id="stop" type="button">End session</button>
             <button class="quiet" id="debug-toggle" type="button" aria-pressed="false" hidden>Show hitboxes</button>
           </div>
+          <div class="quick-controls" aria-label="Player one keyboard shortcuts">
+            <span><kbd>A</kbd> <kbd>D</kbd> Move</span>
+            <span><kbd>W</kbd> Jump</span>
+            <span><kbd>F</kbd> <kbd>G</kbd> <kbd>H</kbd> Attack</span>
+            <span><kbd>R</kbd> Guard</span>
+          </div>
           <label class="check"><input id="sound" type="checkbox"> Sound</label>
         </div>
         <p id="frame-data" class="frame-data" hidden></p>
       </section>
-      <aside class="setup" aria-label="Match setup">
+      <aside class="setup" id="setup" aria-label="Match setup" tabindex="-1">
         <div id="setup-view">
           <h2>Match setup</h2>
           <form id="setup-form">
@@ -66,9 +68,18 @@
               <button type="button" data-mode="training" aria-pressed="false">Training</button>
               <button type="button" data-mode="online" aria-pressed="false">Online</button>
             </div>
-            <div id="fighter-fields" class="pair-fields">
-              <label>Player one<select id="fighter-one"></select></label>
-              <label id="opponent-field"><span id="opponent-label">CPU fighter</span><select id="fighter-two"></select></label>
+            <button class="primary full" id="start" type="submit">Start fight</button>
+            <div id="fighter-fields" class="pair-fields portraits">
+              <label>
+                <span class="selection-label">Player one</span>
+                <span class="selection-art" id="portrait-one" aria-hidden="true"></span>
+                <select id="fighter-one"></select>
+              </label>
+              <label id="opponent-field">
+                <span class="selection-label" id="opponent-label">CPU fighter</span>
+                <span class="selection-art" id="portrait-two" aria-hidden="true"></span>
+                <select id="fighter-two"></select>
+              </label>
             </div>
             <div id="arena-fields" class="pair-fields">
               <label>Rules<select id="rules"><option value="health">Health rounds</option><option value="stock">Three stocks</option></select></label>
@@ -79,13 +90,12 @@
               <ol id="route-stops"></ol>
             </section>
             <p class="hint" id="setup-hint"></p>
-            <button class="primary full" id="start" type="submit">Start fight <span aria-hidden="true">↗</span></button>
           </form>
           <form id="join-form" class="join-form" hidden>
             <label>Room code<input id="room-code" name="room" placeholder="ABCD2345" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false" required></label>
             <button class="secondary" type="submit">Join room</button>
           </form>
-          <button class="quiet replay-link" id="replay" type="button" disabled>Replay last match <span aria-hidden="true">↻</span></button>
+          <button class="quiet replay-link" id="replay" type="button" disabled>Replay last match</button>
         </div>
         <section id="active-view" hidden aria-labelledby="active-heading">
           <h2 id="active-heading"></h2>
@@ -112,7 +122,7 @@
     </div>
     <section class="field-guide" aria-label="How to play">
       <div class="roster-card" id="roster">
-        <h2>Meet the fighters</h2>
+        <h2>Fighters</h2>
         <div id="roster-list" class="roster-list"></div>
       </div>
       <div class="controls-card" id="controls">
@@ -127,8 +137,8 @@
         </table>
       </div>
     </section>
-    <section class="shore-shop" aria-labelledby="shop-title">
-      <div><h2 id="shop-title">Coast shop</h2><p class="hint">Earn shells on first campaign clears. A palette changes your fighter’s accent on this screen.</p></div>
+    <section class="shore-shop" id="shop" aria-labelledby="shop-title">
+      <div><h2 id="shop-title">Coast shop</h2><p class="hint">First campaign clears earn shells. Equip a palette to change your fighter’s accent.</p></div>
       <div class="shop-actions"><p id="shell-balance" aria-live="polite"></p><div id="shop-palette-list"></div><p id="shop-status" role="status" hidden></p></div>
     </section>
   </main>

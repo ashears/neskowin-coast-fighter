@@ -19,6 +19,9 @@ test('campaign cleanup plays through, unlocks The Chelan, and restores progress 
   await page.clock.install();
   const errors = await open(page);
   await expect(page).toHaveTitle('Neskowin Coast Fighter');
+  await expect(page.getByRole('button', { name: 'Start fight' })).toBeInViewport();
+  await expect(page.locator('#portrait-one')).toHaveAttribute('data-fighter', 'proposal-rock');
+  await expect(page.locator('#portrait-two img')).toBeVisible();
   await page.screenshot({ path: info.outputPath('desktop.png'), fullPage: true });
   await page.getByRole('button', { name: 'Campaign', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Chelan Shore Locked' })).toBeDisabled();
@@ -72,6 +75,8 @@ test('mobile practice accepts touch input and fits without overflow', async ({ b
     const page = await context.newPage();
     await page.clock.install();
     const errors = await open(page);
+    await expect(page.getByRole('button', { name: 'Start fight' })).toBeInViewport({ ratio: 1 });
+    await page.screenshot({ path: info.outputPath('mobile-setup.png'), fullPage: false });
     await page.getByRole('button', { name: 'Training', exact: true }).tap();
     await page.getByRole('button', { name: 'Start training' }).tap();
     await expect(page.locator('#hud .clock')).toHaveText('∞');
@@ -131,5 +136,21 @@ test('CPU mode runs from the keyboard and can return to setup', async ({ page })
   await expect(page.locator('#hud')).toBeVisible();
   await page.getByRole('button', { name: 'End session' }).click();
   await expect(page.getByRole('button', { name: 'Start fight' })).toBeFocused();
+  expect(errors).toEqual([]);
+});
+
+test('fighter selection follows the preview and keyboard navigation reaches setup', async ({ page }) => {
+  const errors = await open(page);
+  await page.keyboard.press('Tab');
+  const skip = page.getByRole('link', { name: 'Skip to game setup' });
+  await expect(skip).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#setup')).toBeFocused();
+  await page.getByRole('combobox', { name: 'Player one', exact: true }).selectOption('duck-flag');
+  await expect(page.locator('#portrait-one')).toHaveAttribute('data-fighter', 'duck-flag');
+  await expect(page.locator('#portrait-one .portrait-flag')).toBeVisible();
+  await page.getByRole('combobox', { name: 'Player one', exact: true }).selectOption('the-house');
+  await expect(page.locator('#portrait-one')).toHaveAttribute('data-fighter', 'the-house');
+  await expect(page.locator('#portrait-one img')).toBeVisible();
   expect(errors).toEqual([]);
 });

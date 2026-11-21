@@ -7,11 +7,7 @@ import forest from '../../public/assets/backgrounds/beach2.webp?url';
 import rock from '../../public/assets/backgrounds/beach3.jpg?url';
 import ridge from '../../public/assets/backgrounds/beach4.webp?url';
 import access from '../../public/assets/backgrounds/beach1.jpeg?url';
-import proposal from '../../public/assets/fighters/proposal-rock.png?url';
-import chelan from '../../public/assets/fighters/chelan.png?url';
-import house from '../../public/assets/fighters/the-house.svg?url';
-import ripRap from '../../public/assets/fighters/rip-rap.svg?url';
-import ocean from '../../public/assets/fighters/ocean.svg?url';
+import { sprites } from './art';
 
 const width = 960;
 const height = 540;
@@ -20,13 +16,7 @@ const teamColors = ['#fbb783', '#90eddf'] as const;
 const backgrounds: Record<StageId, string> = {
   'ghost-forest': forest, 'proposal-rock': rock, breakwater: ridge, 'beach-access': access, 'king-tide': forest,
 };
-const sprites = {
-  'proposal-rock': { url: proposal, crop: [42, 112, 1510, 745], width: 166 },
-  chelan: { url: chelan, crop: [105, 85, 800, 515], width: 143 },
-  'rip-rap': { url: ripRap, width: 148 },
-  'the-house': { url: house, width: 147 },
-  ocean: { url: ocean, width: 158 },
-} satisfies Partial<Record<FighterId, { url: string; crop?: number[]; width: number }>>;
+
 type Actor = Snapshot['fighters'][number];
 
 interface Effect extends Point {
@@ -43,24 +33,33 @@ function cover(ctx: CanvasRenderingContext2D, image: HTMLImageElement) {
 }
 
 function surface(ctx: CanvasRenderingContext2D, x: number, y: number, span: number, oneWay: boolean, floating: boolean) {
-  const depth = oneWay ? 14 : floating ? 66 : 102;
+  const depth = oneWay ? 11 : floating ? 48 : 25;
   const sand = ctx.createLinearGradient(0, y, 0, y + depth);
-  sand.addColorStop(0, oneWay ? '#52675b' : '#615748');
-  sand.addColorStop(.35, '#35453d');
-  sand.addColorStop(1, '#172b24');
+  sand.addColorStop(0, oneWay ? '#5d6b57' : '#7b6c52');
+  sand.addColorStop(.45, oneWay ? '#35483a' : '#434f3e');
+  sand.addColorStop(1, floating ? '#26342d' : '#25372a00');
   ctx.fillStyle = sand;
   ctx.beginPath();
   ctx.moveTo(x, y);
   ctx.lineTo(x + span, y);
-  ctx.lineTo(x + span - (oneWay ? 12 : 30), y + depth);
-  ctx.lineTo(x + (oneWay ? 13 : 22), y + depth);
+  if (floating) {
+    ctx.lineTo(x + span - 11, y + depth * .48);
+    ctx.lineTo(x + span * .77, y + depth * .86);
+    ctx.lineTo(x + span * .57, y + depth * .7);
+    ctx.lineTo(x + span * .39, y + depth);
+    ctx.lineTo(x + span * .17, y + depth * .81);
+    ctx.lineTo(x + 9, y + depth * .44);
+  } else {
+    ctx.lineTo(x + span, y + depth);
+    ctx.lineTo(x, y + depth);
+  }
   ctx.closePath();
   ctx.fill();
   ctx.fillStyle = oneWay ? '#d7e8bb' : '#eee0b2';
-  ctx.fillRect(x, y, span, oneWay ? 2 : 3);
-  ctx.fillStyle = '#d6e4bf55';
+  ctx.fillRect(x, y, span, oneWay ? 2 : 2.5);
+  ctx.fillStyle = '#e6d8b050';
   for (let index = 12; index < span - 14; index += 32) {
-    ctx.fillRect(x + index, y + (index % 7) + 5, 10 + (index % 11), 1.5);
+    ctx.fillRect(x + index, y + (index % 7) + 5, 6 + (index % 11), 1);
   }
 }
 
