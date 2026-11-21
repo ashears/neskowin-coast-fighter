@@ -4,7 +4,9 @@ async function open(page) {
   const errors = [];
   page.on('pageerror', ({ message }) => errors.push(message));
   await page.goto('./');
-  await expect(page.locator('#viewport canvas')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Choose a mode' })).toBeVisible();
+  await expect(page.locator('#game-screen')).toBeHidden();
+  await expect(page.locator('#viewport canvas')).toHaveCount(0);
   return errors;
 }
 
@@ -19,11 +21,12 @@ test('campaign cleanup plays through, unlocks The Chelan, and restores progress 
   await page.clock.install();
   const errors = await open(page);
   await expect(page).toHaveTitle('Neskowin Coast Fighter');
-  await expect(page.getByRole('button', { name: 'Start fight' })).toBeInViewport();
-  await expect(page.locator('#portrait-one')).toHaveAttribute('data-fighter', 'proposal-rock');
-  await expect(page.locator('#portrait-two img')).toBeVisible();
-  await page.screenshot({ path: info.outputPath('desktop.png'), fullPage: true });
+  await expect(page.locator('h1')).toHaveText('Neskowin Coast Fighter');
+  await expect(page.locator('h1').locator('*')).toHaveCount(0);
+  await page.screenshot({ path: info.outputPath('desktop-menu.png') });
   await page.getByRole('button', { name: 'Campaign', exact: true }).click();
+  await expect(page.locator('#viewport canvas')).toBeVisible();
+  await expect(page.locator('#portrait-one')).toHaveAttribute('data-fighter', 'proposal-rock');
   await expect(page.getByRole('button', { name: 'Chelan Shore Locked' })).toBeDisabled();
   await page.getByRole('button', { name: 'Play stop' }).click();
   await expect(page.locator('#objective')).toContainText('Bottle');
@@ -56,13 +59,15 @@ test('campaign cleanup plays through, unlocks The Chelan, and restores progress 
 test('local stock match completes and can be replayed from a saved recording', async ({ page }) => {
   await page.clock.install();
   const errors = await open(page);
-  await page.getByRole('button', { name: 'Local', exact: true }).click();
+  await page.getByRole('button', { name: 'Local versus', exact: true }).click();
   await page.getByRole('combobox', { name: 'Rules' }).selectOption('stock');
   await expect(page.getByRole('combobox', { name: 'Arena', exact: true })).toHaveValue('proposal-rock');
   await page.getByRole('button', { name: 'Start fight' }).click();
   await hold(page, 'a', 7600);
   await expect(page.getByRole('heading', { name: 'The Chelan wins' })).toBeVisible();
   await page.reload();
+  await expect(page.getByRole('heading', { name: 'Choose a mode' })).toBeVisible();
+  await page.getByRole('button', { name: 'Local versus', exact: true }).click();
   await page.getByRole('button', { name: 'Replay last match' }).click();
   await page.clock.runFor(8000);
   await expect(page.getByRole('heading', { name: 'The Chelan wins' })).toBeVisible();
@@ -75,8 +80,8 @@ test('mobile practice accepts touch input and fits without overflow', async ({ b
     const page = await context.newPage();
     await page.clock.install();
     const errors = await open(page);
-    await expect(page.getByRole('button', { name: 'Start fight' })).toBeInViewport({ ratio: 1 });
-    await page.screenshot({ path: info.outputPath('mobile-setup.png'), fullPage: false });
+    for (const button of await page.locator('#mode-screen button').all()) await expect(button).toBeInViewport({ ratio: 1 });
+    await page.screenshot({ path: info.outputPath('mobile-menu.png') });
     await page.getByRole('button', { name: 'Training', exact: true }).tap();
     await page.getByRole('button', { name: 'Start training' }).tap();
     await expect(page.locator('#hud .clock')).toHaveText('∞');
@@ -128,6 +133,9 @@ test('private rooms play a full match with the Neskowin roster and support remat
 test('CPU mode runs from the keyboard and can return to setup', async ({ page }) => {
   await page.clock.install();
   const errors = await open(page);
+  await page.getByRole('button', { name: 'Fight CPU', exact: true }).focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('heading', { name: 'Fight CPU' })).toBeFocused();
   await page.getByRole('button', { name: 'Start fight' }).focus();
   await page.keyboard.press('Enter');
   await expect(page.locator('#session-label')).toHaveText('CPU fight');
@@ -136,12 +144,20 @@ test('CPU mode runs from the keyboard and can return to setup', async ({ page })
   await expect(page.locator('#hud')).toBeVisible();
   await page.getByRole('button', { name: 'End session' }).click();
   await expect(page.getByRole('button', { name: 'Start fight' })).toBeFocused();
+  await page.getByRole('button', { name: 'Back to modes' }).click();
+  await expect(page.getByRole('button', { name: 'Fight CPU', exact: true })).toBeFocused();
+  await expect(page.locator('#game-screen')).toBeHidden();
+  await page.getByRole('button', { name: 'Training', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Start training' })).toBeVisible();
+  await expect(page.locator('#viewport canvas')).toHaveCount(1);
   expect(errors).toEqual([]);
 });
 
 test('fighter selection follows the preview and keyboard navigation reaches setup', async ({ page }) => {
   const errors = await open(page);
-  await page.keyboard.press('Tab');
+  await page.getByRole('button', { name: 'Fight CPU', exact: true }).click();
+  await page.getByRole('button', { name: 'Back to modes' }).focus();
+  await page.keyboard.press('Shift+Tab');
   const skip = page.getByRole('link', { name: 'Skip to game setup' });
   await expect(skip).toBeFocused();
   await page.keyboard.press('Enter');

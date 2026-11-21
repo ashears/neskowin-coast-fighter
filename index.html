@@ -7,15 +7,25 @@
   <meta name="description" content="An Oregon Coast fighting game. Play the campaign, challenge a friend, or fight the tide.">
   <title>Neskowin Coast Fighter</title>
 </head>
-<body>
-  <a class="skip-link" href="#setup">Skip to game setup</a>
+<body data-screen="modes">
+  <a class="skip-link" id="setup-link" href="#setup" hidden>Skip to game setup</a>
   <header class="masthead">
-    <h1 class="wordmark">Neskowin <span>Coast Fighter</span></h1>
-    <nav class="top-nav" aria-label="Game guide">
-      <a href="#roster">Fighters</a><a href="#controls">Controls</a><a href="#shop">Shop</a>
+    <h1 class="wordmark">Neskowin Coast Fighter</h1>
+    <nav class="top-nav" id="game-nav" aria-label="Game navigation" hidden>
+      <button id="back-to-modes" type="button">Back to modes</button><a href="#roster">Fighters</a><a href="#controls">Controls</a><a href="#shop">Shop</a>
     </nav>
   </header>
-  <main class="shell">
+  <main id="mode-screen" class="mode-screen" aria-labelledby="mode-heading">
+    <h2 id="mode-heading">Choose a mode</h2>
+    <div class="mode-menu">
+      <button type="button" data-mode="campaign">Campaign</button>
+      <button type="button" data-mode="cpu">Fight CPU</button>
+      <button type="button" data-mode="local">Local versus</button>
+      <button type="button" data-mode="training">Training</button>
+      <button type="button" data-mode="online">Online</button>
+    </div>
+  </main>
+  <main class="shell" id="game-screen" hidden>
     <div class="game-layout">
       <section class="game-panel" aria-label="Arena">
         <div class="arena-caption">
@@ -59,15 +69,8 @@
       </section>
       <aside class="setup" id="setup" aria-label="Match setup" tabindex="-1">
         <div id="setup-view">
-          <h2>Match setup</h2>
+          <h2 id="setup-heading" tabindex="-1">Match setup</h2>
           <form id="setup-form">
-            <div class="mode-picker" role="group" aria-label="Play mode">
-              <button type="button" data-mode="campaign" aria-pressed="false">Campaign</button>
-              <button type="button" data-mode="cpu" aria-pressed="true">CPU</button>
-              <button type="button" data-mode="local" aria-pressed="false">Local</button>
-              <button type="button" data-mode="training" aria-pressed="false">Training</button>
-              <button type="button" data-mode="online" aria-pressed="false">Online</button>
-            </div>
             <button class="primary full" id="start" type="submit">Start fight</button>
             <div id="fighter-fields" class="pair-fields portraits">
               <label>
@@ -142,7 +145,7 @@
       <div class="shop-actions"><p id="shell-balance" aria-live="polite"></p><div id="shop-palette-list"></div><p id="shop-status" role="status" hidden></p></div>
     </section>
   </main>
-  <footer class="site-footer">Built with the <a href="https://github.com/ashears/2d-fighter-framework">2D Fighter Framework</a></footer>
+  <footer class="site-footer" id="game-footer" hidden>Built with the <a href="https://github.com/ashears/2d-fighter-framework">2D Fighter Framework</a></footer>
   <script type="module" src="/src/coast/main.ts"></script>
 </body>
 </html>

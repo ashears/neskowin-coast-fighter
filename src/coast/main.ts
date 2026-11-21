@@ -28,7 +28,13 @@ const activeView = byId('active-view');
 const roomView = byId('room-view');
 const resultView = byId('result-view');
 const resultHeading = byId('result-heading');
-const modeButtons = [...document.querySelectorAll<HTMLButtonElement>('button[data-mode]')];
+const modeScreen = byId('mode-screen');
+const gameScreen = byId('game-screen');
+const modeButtons = [...modeScreen.querySelectorAll<HTMLButtonElement>('button[data-mode]')];
+const roomsAvailable = location.protocol !== 'https:' || Boolean(import.meta.env.VITE_ROOM_URL);
+const modeNames: Record<Mode, string> = {
+  campaign: 'Campaign', cpu: 'Fight CPU', local: 'Local versus', training: 'Training', online: 'Online',
+};
 const rulesField = byId<HTMLSelectElement>('rules');
 const stageField = byId<HTMLSelectElement>('stage');
 const fighterOne = byId<HTMLSelectElement>('fighter-one');
@@ -62,35 +68,39 @@ populateFighters(fighterTwo, [...fighterIds], 'chelan');
 populateFighters(roomFighter, [...fighterIds], '', true);
 stageField.replaceChildren(...stageIds.map((id) => new Option(stageInfo[id].name, id)));
 
-for (const id of fighterIds) {
-  const item = document.createElement('article');
-  item.className = 'fighter-note';
-  const marker = document.createElement('div');
-  marker.className = 'fighter-icon';
-  marker.setAttribute('aria-hidden', 'true');
-  putPortrait(marker, id);
-  const copy = document.createElement('div');
-  const title = document.createElement('h3');
-  const role = document.createElement('span');
-  title.textContent = roster[id].name;
-  role.textContent = fighterInfo[id].role;
-  role.className = 'fighter-role';
-  const detail = document.createElement('p');
-  detail.textContent = fighterInfo[id].description;
-  copy.append(title, role, detail);
-  item.append(marker, copy);
-  byId('roster-list').append(item);
+function buildRoster() {
+  const list = byId('roster-list');
+  for (const id of fighterIds) {
+    const item = document.createElement('article');
+    item.className = 'fighter-note';
+    const marker = document.createElement('div');
+    marker.className = 'fighter-icon';
+    marker.setAttribute('aria-hidden', 'true');
+    putPortrait(marker, id);
+    const copy = document.createElement('div');
+    const title = document.createElement('h3');
+    const role = document.createElement('span');
+    title.textContent = roster[id].name;
+    role.textContent = fighterInfo[id].role;
+    role.className = 'fighter-role';
+    const detail = document.createElement('p');
+    detail.textContent = fighterInfo[id].description;
+    copy.append(title, role, detail);
+    item.append(marker, copy);
+    list.append(item);
+  }
 }
 
-const renderer = new ArenaRenderer(byId('viewport'));
+let renderer: ArenaRenderer;
+let renderFrame = 0;
 const connection = new RoomConnection(onServerMessage, onDisconnect);
 const controls = new Controls(touch, () => {
   const neutral = online?.input(0);
   if (neutral) connection.send(neutral);
 });
 
-let mode: Mode = 'cpu';
-let setup = readSetup();
+let mode: Mode;
+let setup: Setup;
 let currentSnapshot: Snapshot;
 let definition: ReadonlyDeep<MatchDefinition>;
 let offline: OfflineFight | undefined;
@@ -169,14 +179,13 @@ function setStatus(status: string) {
 }
 
 function updateMode() {
-  for (const button of modeButtons) button.setAttribute('aria-pressed', String(button.dataset.mode === mode));
+  byId('setup-heading').textContent = modeNames[mode];
   byId('fighter-fields').hidden = mode === 'online';
   byId('opponent-field').hidden = mode === 'campaign';
   byId('arena-fields').hidden = mode === 'campaign';
   byId('campaign-route').hidden = mode !== 'campaign';
   populateFighters(fighterOne, mode === 'campaign' ? unlockedFighters(progress.current) : [...fighterIds], fighterOne.value);
   if (mode === 'campaign') drawRoute();
-  const roomsAvailable = location.protocol !== 'https:' || Boolean(import.meta.env.VITE_ROOM_URL);
   byId('join-form').hidden = mode !== 'online' || !roomsAvailable;
   startButton.hidden = mode === 'online' && !roomsAvailable;
   byId('opponent-label').textContent = mode === 'local' ? 'Player two' : mode === 'training' ? 'Training dummy' : 'CPU fighter';
@@ -581,18 +590,55 @@ function render(now: number) {
   } else {
     renderer.draw(definition, currentSnapshot, now, debug, undefined, setup.stop === 'proposal-rock-cleanup' && !!offline);
   }
-  requestAnimationFrame(render);
+  renderFrame = requestAnimationFrame(render);
+}
+
+function setScreen(playing: boolean) {
+  document.body.dataset.screen = playing ? 'game' : 'modes';
+  modeScreen.hidden = playing;
+  gameScreen.hidden = !playing;
+  for (const id of ['setup-link', 'game-nav', 'game-footer']) byId(id).hidden = !playing;
+  window.scrollTo(0, 0);
+}
+
+function selectMode(selected: Mode) {
+  mode = selected;
+  setScreen(true);
+  if (!renderer) {
+    renderer = new ArenaRenderer(byId('viewport'));
+    buildRoster();
+  }
+  showView('setup');
+  setStatus('');
+  updateMode();
+  drawPreview();
+  drawShop();
+  clock = performance.now();
+  accumulator = 0;
+  renderFrame = requestAnimationFrame(render);
+  byId('setup-heading').focus({ preventScroll: true });
+}
+
+function returnToModes() {
+  cancelAnimationFrame(renderFrame);
+  if (room) connection.send({ type: 'leave' });
+  connection.close();
+  room = undefined;
+  clearFight();
+  privateResult = false;
+  setScreen(false);
+  modeButtons.find((button) => button.dataset.mode === mode)?.focus({ preventScroll: true });
 }
 
 for (const button of modeButtons) {
-  button.addEventListener('click', () => {
-    mode = button.dataset.mode as Mode;
-    if (mode !== 'online' && !room) connection.close();
-    setStatus('');
-    updateMode();
-    drawPreview();
-  });
+  if (button.dataset.mode === 'online' && !roomsAvailable) {
+    button.disabled = true;
+    button.textContent = 'Online unavailable';
+  }
+  button.addEventListener('click', () => selectMode(button.dataset.mode as Mode));
 }
+
+byId('back-to-modes').addEventListener('click', returnToModes);
 
 for (const select of [fighterOne, fighterTwo]) select.addEventListener('change', drawPreview);
 rulesField.addEventListener('change', () => {
@@ -672,8 +718,3 @@ matchMedia('(any-pointer: coarse)').addEventListener('change', (event) => {
   touch.hidden = !capturePointer || !controls.active || controls.local;
 });
 window.addEventListener('pagehide', () => connection.close());
-
-updateMode();
-drawPreview();
-drawShop();
-requestAnimationFrame(render);

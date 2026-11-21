@@ -57,31 +57,51 @@ section[id], .setup { scroll-margin-top: 14px; }
 
 .wordmark {
   margin: 0;
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 5px 15px;
-  color: var(--ink);
-  font-family: Impact, 'Arial Narrow', 'Helvetica Neue', sans-serif;
-  font-size: clamp(2.5rem, 5.8vw, 6rem);
-  font-weight: 900;
-  letter-spacing: -.035em;
-  line-height: .83;
-  text-transform: uppercase;
-}
-
-.wordmark span {
-  font-family: var(--mono);
-  font-size: .265em;
-  letter-spacing: -.035em;
+  font-family: inherit;
+  font-size: clamp(1.45rem, 3.4vw, 2.6rem);
   font-weight: 800;
-  color: var(--rust);
-  white-space: nowrap;
+  letter-spacing: -.045em;
+  line-height: 1.08;
+  text-wrap: balance;
 }
 
-.top-nav { display: flex; align-items: center; gap: 20px; padding-bottom: 2px; }
-.top-nav a { padding: 5px 0; font-size: .86rem; font-weight: 700; text-decoration-thickness: 1px; text-underline-offset: 4px; }
-.top-nav a:hover { color: var(--rust); }
+.top-nav { display: flex; align-items: center; flex-wrap: wrap; gap: 5px 16px; }
+.top-nav a, .top-nav button {
+  padding: 5px 0;
+  font-size: .85rem;
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+}
+.top-nav button { border: 0; background: transparent; }
+.top-nav a:hover, .top-nav button:hover { color: var(--rust); }
+
+body[data-screen="modes"] .masthead, .mode-screen {
+  width: min(calc(100% - 40px), 464px);
+  margin-inline: auto;
+}
+
+body[data-screen="modes"] .masthead {
+  display: block;
+  border: 0;
+  padding: clamp(30px, 12vh, 110px) 0 20px;
+}
+
+.mode-screen { border-top: 1px solid var(--ink); padding: 16px 0 30px; }
+.mode-screen h2 { font-size: 1rem; letter-spacing: 0; margin-bottom: 10px; }
+.mode-menu { display: grid; gap: 6px; }
+.mode-menu button {
+  min-height: 48px;
+  padding: 10px 13px;
+  border: 1px solid #929b8c;
+  background: #f8f5ea;
+  text-align: left;
+  font-size: .93rem;
+  font-weight: 750;
+}
+.mode-menu button:hover:not(:disabled) { border-color: var(--rust); background: #e9e2d4; }
+.mode-menu button:disabled { background: transparent; color: #656b62; }
 
 .shell { padding: 22px 0 42px; }
 .game-layout {
@@ -167,20 +187,6 @@ section[id], .setup { scroll-margin-top: 14px; }
 
 .setup { min-width: 0; border-left: 1px solid var(--rule); padding-left: 24px; }
 h2 { margin: 0 0 12px; font-size: 1.36rem; font-weight: 800; letter-spacing: -.045em; }
-.mode-picker { display: flex; flex-wrap: wrap; gap: 0 13px; border-bottom: 1px solid var(--rule); margin-bottom: 13px; }
-.mode-picker button {
-  min-height: 38px;
-  border: 0;
-  border-bottom: 3px solid transparent;
-  background: transparent;
-  color: var(--muted);
-  padding: 5px 0 4px;
-  font-size: .79rem;
-  font-weight: 700;
-}
-.mode-picker button:hover, .mode-picker [aria-pressed="true"] { color: var(--ink); }
-.mode-picker [aria-pressed="true"] { border-bottom-color: var(--rust); }
-
 .primary, .secondary, .quiet { font-size: .83rem; font-weight: 750; }
 .primary { min-height: 46px; padding: 9px 12px; color: white; background: var(--rust); border: 1px solid #8b2a1b; }
 .primary:hover:not(:disabled) { background: #852719; }
@@ -327,7 +333,6 @@ kbd { display: inline-block; min-width: 16px; padding: 1px 3px; border: 1px soli
   .masthead, .shell, .site-footer { width: calc(100% - 38px); }
   .game-layout { grid-template-columns: minmax(0, 1fr) 298px; gap: 17px; }
   .setup { padding-left: 16px; }
-  .mode-picker { gap: 0 10px; }
 }
 
 @media (max-width: 780px) {
@@ -341,10 +346,8 @@ kbd { display: inline-block; min-width: 16px; padding: 1px 3px; border: 1px soli
 @media (max-width: 530px) {
   .masthead, .shell, .site-footer { width: calc(100% - 24px); }
   .masthead { align-items: flex-start; flex-direction: column; gap: 8px; }
-  .wordmark { font-size: clamp(2.65rem, 11vw, 3.65rem); gap: 4px 8px; }
-  .wordmark span { font-size: .30em; }
   .top-nav { padding: 0; }
-  .top-nav a { padding: 2px 0; font-size: .77rem; }
+  .top-nav a, .top-nav button { padding: 2px 0; font-size: .77rem; }
   .game-layout { gap: 15px; }
   .arena-caption, .arena-footer { min-height: 34px; padding: 4px 9px; }
   .match-tools { gap: 8px; }
@@ -360,7 +363,6 @@ kbd { display: inline-block; min-width: 16px; padding: 1px 3px; border: 1px soli
 
 @media (pointer: coarse) {
   .quick-controls { display: none; }
-  .mode-picker button { min-height: 43px; }
   .touch-controls { padding-inline: max(9px, env(safe-area-inset-left)); }
 }
 
