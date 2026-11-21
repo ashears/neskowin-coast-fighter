@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Button, createMatch, createRecording, playRecording, snapshotChecksum } from '@ashears/2d-fighter-framework';
 import { campaignFight, completeStop, normalizeProgress, stops, unlockedFighters, available, cleanupStatus, shellBalance, equipPalette } from '../dist-server/campaign.js';
-import { coastConfig, coastTrainingConfig, fighterIds, stageIds, ruleIds, supportsMatch } from '../dist-server/content.js';
+import { coastConfig, fighterIds, stageIds, ruleIds, supportsMatch } from '../dist-server/content.js';
 
 test('every supported roster and arena combination runs on the packaged core', () => {
   for (const stage of stageIds) for (const rule of ruleIds) {
@@ -93,7 +93,7 @@ test('King Tide telegraphs and launches waves and rewards surviving the timer', 
   assert.equal(match.snapshot().roundTick, 32 * 60);
 });
 
-test('normal matches replay exactly and health practice ignores an expired timer', () => {
+test('normal matches replay exactly', () => {
   const { definition, rules } = coastConfig(['proposal-rock', 'chelan'], 'proposal-rock', 'stock', 42);
   const match = createMatch(definition, rules);
   const frames = [];
@@ -104,10 +104,6 @@ test('normal matches replay exactly and health practice ignores an expired timer
   }
   const replay = playRecording(definition, rules, createRecording(match, frames));
   assert.equal(snapshotChecksum(replay.snapshot), snapshotChecksum(match.snapshot()));
-  const practice = coastTrainingConfig(['proposal-rock', 'chelan'], 'ghost-forest', 'health', 42);
-  const training = createMatch({ ...practice.definition, timeLimit: 2 }, practice.rules);
-  for (let index = 0; index < 10; index++) training.step([0, 0]);
-  assert.equal(training.snapshot().phase, 'playing');
 });
 
 test('shell purchases are affordable, idempotent, and compatible with persisted campaign clears', () => {

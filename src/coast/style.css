@@ -183,7 +183,6 @@ body[data-screen="modes"] .masthead {
 .arena-footer :focus-visible { outline-color: var(--player-two); }
 .check { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; font-size: .74rem; white-space: nowrap; }
 .check input { accent-color: var(--player-two); width: 16px; height: 16px; margin: 0; }
-.frame-data { margin: 0; border-top: 1px solid #48564a; padding: 8px 13px; font: 650 .74rem/1.4 var(--mono); }
 
 .setup { min-width: 0; border-left: 1px solid var(--rule); padding-left: 24px; }
 h2 { margin: 0 0 12px; font-size: 1.36rem; font-weight: 800; letter-spacing: -.045em; }

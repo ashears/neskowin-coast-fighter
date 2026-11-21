@@ -1,4 +1,4 @@
-import { getCombatBoxes, getProjectileDefinition, worldBox } from '@ashears/2d-fighter-framework';
+import { getProjectileDefinition, worldBox } from '@ashears/2d-fighter-framework';
 import type { Box, Facing, GameEvent, MatchDefinition, ReadonlyDeep, Seat, Snapshot } from '@ashears/2d-fighter-framework';
 import { arenas, fighterInfo, stageInfo } from './content';
 import type { FighterId, StageId } from './content';
@@ -197,7 +197,7 @@ export class ArenaRenderer {
     }
   }
 
-  private fighter(id: FighterId, actor: Actor, seat: Seat, position: Point, tick: number, training: boolean) {
+  private fighter(id: FighterId, actor: Actor, seat: Seat, position: Point, tick: number, cleanup: boolean) {
     if (actor.respawn || actor.health <= 0) return;
     const ctx = this.ctx;
     const { x, y } = position;
@@ -262,7 +262,7 @@ export class ArenaRenderer {
       }
     }
     ctx.restore();
-    if (!training) {
+    if (!cleanup) {
       ctx.fillStyle = '#122b24';
       ctx.fillRect(x - 15, y - 129, 30, 17);
       ctx.fillStyle = accent;
@@ -272,7 +272,7 @@ export class ArenaRenderer {
     }
   }
 
-  draw(definition: ReadonlyDeep<MatchDefinition>, snapshot: Snapshot, now: number, debug = false,
+  draw(definition: ReadonlyDeep<MatchDefinition>, snapshot: Snapshot, now: number,
     positions: readonly [Readonly<Point>, Readonly<Point>] = [snapshot.fighters[0].position, snapshot.fighters[1].position],
     cleanup = false,
   ) {
@@ -317,15 +317,6 @@ export class ArenaRenderer {
       ctx.strokeText(effect.text, effect.x, y);
       ctx.fillText(effect.text, effect.x, y);
       ctx.restore();
-    }
-    if (debug) {
-      for (const { kind, box } of getCombatBoxes(definition, snapshot)) {
-        ctx.fillStyle = kind === 'hurtbox' ? '#6ef0d040' : '#ffa36e55';
-        ctx.strokeStyle = kind === 'hurtbox' ? '#95f2df' : '#ffe0a2';
-        ctx.lineWidth = 1;
-        ctx.fillRect(box.x, box.y, box.width, box.height);
-        ctx.strokeRect(box.x, box.y, box.width, box.height);
-      }
     }
     ctx.fillStyle = stageInfo[this.currentStage].accent;
     ctx.fillRect(0, height - 2, width, 2);

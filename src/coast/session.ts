@@ -1,12 +1,12 @@
 import { createCpu, createMatch, createRecording, isInputFrame, SNAPSHOT_VERSION } from '@ashears/2d-fighter-framework';
 import type { GameEvent, InputFrame, Json, Match, Pair, Recording, Snapshot } from '@ashears/2d-fighter-framework';
-import { fighterIds, coastConfig, coastTrainingConfig, fighterInfo, ruleIds, stageIds, supportsMatch } from './content';
+import { fighterIds, coastConfig, fighterInfo, ruleIds, stageIds, supportsMatch } from './content';
 import type { FighterId, RuleId, StageId } from './content';
 import type { Controls } from './input';
 import { campaignFight } from './campaign';
 import type { StopId } from './campaign';
 
-export type LocalMode = 'cpu' | 'local' | 'training' | 'campaign';
+export type LocalMode = 'cpu' | 'local' | 'campaign';
 export type Mode = LocalMode | 'online';
 export interface Setup {
   stage: StageId;
@@ -59,8 +59,7 @@ export class OfflineFight {
       this.opponent = chapter.opponent;
       return;
     }
-    const config = mode === 'training' ? coastTrainingConfig : coastConfig;
-    const { definition, rules } = config(setup.fighters, setup.stage, setup.rule, setup.seed);
+    const { definition, rules } = coastConfig(setup.fighters, setup.stage, setup.rule, setup.seed);
     this.match = createMatch(definition, rules);
     if (mode === 'cpu') {
       const cpu = createCpu({ seed: setup.seed, preferredRange: fighterInfo[setup.fighters[1]].range, stage: definition.stage });
@@ -76,7 +75,7 @@ export class OfflineFight {
     const first = controls.next(0);
     const second = this.mode === 'local' ? controls.next(1) : this.opponent?.(this.match.snapshot()) ?? 0;
     const frame: Pair<InputFrame> = [first, second];
-    if (this.mode !== 'training' && this.mode !== 'campaign') this.inputs.push(frame);
+    if (this.mode !== 'campaign') this.inputs.push(frame);
     return this.match.step(frame);
   }
 

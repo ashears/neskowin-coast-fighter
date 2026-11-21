@@ -1,5 +1,5 @@
 import { healthRules, stockRules, TICK_RATE } from '@ashears/2d-fighter-framework';
-import type { FighterDefinition, Impact, MatchDefinition, MoveAction, MoveDefinition, ReadonlyDeep, RuleSet, StageDefinition } from '@ashears/2d-fighter-framework';
+import type { FighterDefinition, Impact, MatchDefinition, MoveAction, MoveDefinition, ReadonlyDeep, StageDefinition } from '@ashears/2d-fighter-framework';
 
 export const fighterIds = ['proposal-rock', 'chelan', 'rip-rap', 'the-house', 'duck-flag', 'ocean'] as const;
 export const stageIds = ['ghost-forest', 'proposal-rock', 'breakwater', 'beach-access', 'king-tide'] as const;
@@ -135,14 +135,4 @@ export function coastConfig(fighters: readonly [FighterId, FighterId], stage: St
     } satisfies ReadonlyDeep<MatchDefinition>,
     rules: rule === 'health' ? healthRules : stockRules,
   };
-}
-
-export function coastTrainingConfig(fighters: readonly [FighterId, FighterId], stage: StageId, rule: RuleId, seed: number) {
-  const { definition, rules } = coastConfig(fighters, stage, rule, seed);
-  const training: RuleSet<null> = {
-    ...rules,
-    id: `training-${rules.id}`,
-    evaluate: (context) => rules.evaluate({ ...context, timedOut: false }),
-  };
-  return { definition, rules: training };
 }

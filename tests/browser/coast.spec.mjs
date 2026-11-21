@@ -74,7 +74,7 @@ test('local stock match completes and can be replayed from a saved recording', a
   expect(errors).toEqual([]);
 });
 
-test('mobile practice accepts touch input and fits without overflow', async ({ browser }, info) => {
+test('mobile campaign accepts touch input and fits without overflow', async ({ browser }, info) => {
   const context = await browser.newContext({ ...devices['iPhone 13'], defaultBrowserType: 'chromium' });
   try {
     const page = await context.newPage();
@@ -82,12 +82,20 @@ test('mobile practice accepts touch input and fits without overflow', async ({ b
     const errors = await open(page);
     for (const button of await page.locator('#mode-screen button').all()) await expect(button).toBeInViewport({ ratio: 1 });
     await page.screenshot({ path: info.outputPath('mobile-menu.png') });
-    await page.getByRole('button', { name: 'Training', exact: true }).tap();
-    await page.getByRole('button', { name: 'Start training' }).tap();
-    await expect(page.locator('#hud .clock')).toHaveText('∞');
-    await page.getByRole('button', { name: 'Light attack' }).tap();
-    await page.clock.runFor(45);
-    await expect(page.locator('#frame-data')).toContainText('Basalt Jab');
+    await page.getByRole('button', { name: 'Campaign', exact: true }).tap();
+    await page.getByRole('button', { name: 'Play stop' }).tap();
+    await expect(page.locator('#objective')).toContainText('Bottle');
+    const lightAttack = page.getByRole('button', { name: 'Light attack' });
+    await lightAttack.scrollIntoViewIfNeeded();
+    const { x, y, width, height } = await lightAttack.boundingBox();
+    const touch = await context.newCDPSession(page);
+    await touch.send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [{ x: x + width / 2, y: y + height / 2 }],
+    });
+    await page.clock.runFor(60);
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await expect(page.locator('#objective')).toContainText('1/5 collected');
     expect(await page.locator('body').evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(390);
     await page.screenshot({ path: info.outputPath('mobile.png'), fullPage: true });
     expect(errors).toEqual([]);
@@ -160,8 +168,9 @@ test('CPU mode runs from the keyboard and can return to setup', async ({ page })
   await page.getByRole('button', { name: 'Back to modes' }).click();
   await expect(page.getByRole('button', { name: 'Fight CPU', exact: true })).toBeFocused();
   await expect(page.locator('#game-screen')).toBeHidden();
-  await page.getByRole('button', { name: 'Training', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Start training' })).toBeVisible();
+  await expect(page.locator('#mode-screen button')).toHaveText(['Campaign', 'Fight CPU', 'Local versus', 'Online']);
+  await page.getByRole('button', { name: 'Local versus', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Start fight' })).toBeVisible();
   await expect(page.locator('#viewport canvas')).toHaveCount(1);
   expect(errors).toEqual([]);
 });

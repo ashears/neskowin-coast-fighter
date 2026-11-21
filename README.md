@@ -11,7 +11,7 @@ npm ci
 npm run dev
 ```
 
-Campaign follows five stops from Beach Cleanup to King Tide. First clears unlock campaign fighters and earn shells for local cosmetic palettes. All six fighters are available for versus and training. The game also supports CPU, two-player shared-keyboard versus, touch controls for solo and online play, frame and hitbox displays in training, and replay of the last completed versus match in the tab.
+Campaign follows five stops from Beach Cleanup to King Tide. First clears unlock campaign fighters and earn shells for local cosmetic palettes. All six fighters are available for versus. The game also supports CPU, two-player shared-keyboard versus, touch controls for solo and online play, and replay of the last completed versus match in the tab.
 
 | Action | Player one or online | Local player two |
 | --- | --- | --- |

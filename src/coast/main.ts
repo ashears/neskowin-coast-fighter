@@ -37,7 +37,7 @@ const gameScreen = byId('game-screen');
 const modeButtons = [...modeScreen.querySelectorAll<HTMLButtonElement>('button[data-mode]')];
 const roomsAvailable = supportsDirectRooms();
 const modeNames: Record<Mode, string> = {
-  campaign: 'Campaign', cpu: 'Fight CPU', local: 'Local versus', training: 'Training', online: 'Online',
+  campaign: 'Campaign', cpu: 'Fight CPU', local: 'Local versus', online: 'Online',
 };
 const rulesField = byId<HTMLSelectElement>('rules');
 const stageField = byId<HTMLSelectElement>('stage');
@@ -50,8 +50,6 @@ const againButton = byId<HTMLButtonElement>('again');
 const roomFighter = byId<HTMLSelectElement>('room-fighter');
 const sound = byId<HTMLInputElement>('sound');
 const touch = byId('touch-controls');
-const debugToggle = byId<HTMLButtonElement>('debug-toggle');
-const frameData = byId('frame-data');
 const hud = byId('hud');
 const info = byId('arena-message');
 const objective = byId('objective');
@@ -114,7 +112,6 @@ let offline: OfflineFight | undefined;
 let online: OnlineFight | undefined;
 let room: RoomView | undefined;
 let seat: Seat = 0;
-let debug = false;
 let lastReplay = readReplay();
 let privateResult = false;
 let audio: AudioContext | undefined;
@@ -196,14 +193,13 @@ function updateMode() {
   if (mode === 'campaign') drawRoute();
   byId('join-form').hidden = mode !== 'online' || !roomsAvailable;
   startButton.hidden = mode === 'online' && !roomsAvailable;
-  byId('opponent-label').textContent = mode === 'local' ? 'Player two' : mode === 'training' ? 'Training dummy' : 'CPU fighter';
+  byId('opponent-label').textContent = mode === 'local' ? 'Player two' : 'CPU fighter';
   startButton.replaceChildren(document.createTextNode(
-    mode === 'online' ? 'Create invite' : mode === 'training' ? 'Start training' : mode === 'campaign' ? 'Play stop' : 'Start fight',
+    mode === 'online' ? 'Create invite' : mode === 'campaign' ? 'Play stop' : 'Start fight',
   ));
   const hints: Record<Mode, string> = {
     cpu: '',
     local: 'Two fighters, one keyboard.',
-    training: 'Practice against a stationary dummy and inspect move frames.',
     campaign: stops.find(({ id }) => id === selectedStop)!.objective,
     online: roomsAvailable ? 'Play directly with a friend. Use the same Wi-Fi for the best chance of connecting.' : 'This browser does not support direct rooms.',
   };
@@ -260,15 +256,10 @@ function clearFight() {
   controls.active = false;
   controls.local = false;
   controls.release();
-  debug = false;
   info.hidden = true;
   objective.hidden = true;
-  frameData.hidden = true;
   touch.hidden = true;
   byId('match-tools').hidden = true;
-  debugToggle.hidden = true;
-  debugToggle.setAttribute('aria-pressed', 'false');
-  debugToggle.textContent = 'Show hitboxes';
 }
 
 function backToSetup(exitRoom = false) {
@@ -307,14 +298,12 @@ function startFight(
   clock = performance.now();
   controls.active = matchMode !== 'replay';
   controls.local = matchMode === 'local';
-  const labels = { cpu: 'CPU fight', local: 'Local versus', training: 'Training', campaign: 'Campaign', replay: 'Replay', online: `Online · P${seat + 1}` };
+  const labels = { cpu: 'CPU fight', local: 'Local versus', campaign: 'Campaign', replay: 'Replay', online: `Online · P${seat + 1}` };
   byId('stage-name').textContent = stageInfo[selection.stage].name;
   byId('session-label').textContent = labels[matchMode];
   byId('match-tools').hidden = false;
   touch.hidden = !capturePointer || !controls.active || controls.local;
   objective.hidden = matchMode !== 'campaign';
-  debugToggle.hidden = matchMode !== 'training';
-  frameData.hidden = matchMode !== 'training';
   renderer.stage(selection.stage, true);
   applyPalette();
   buildHud();
@@ -351,12 +340,6 @@ function stopFight() {
 }
 
 function finish(snapshot: Snapshot) {
-  if (offline?.mode === 'training') {
-    const showBoxes = debug;
-    startLocal({ ...setup, seed: randomSeed() }, 'training');
-    setDebug(showBoxes);
-    return;
-  }
   const viewingReplay = offline?.mode === 'replay';
   if (offline && !viewingReplay && offline.mode !== 'campaign') save({ setup, recording: offline.recording() });
   privateResult = !!online;
@@ -508,8 +491,7 @@ function buildHud() {
 function updateHud(snapshot: Snapshot) {
   const stock = setup.rule === 'stock';
   const seconds = Math.max(0, Math.ceil((definition.timeLimit - snapshot.roundTick) / TICK_RATE));
-  hud.querySelector('.clock')!.textContent = offline?.mode === 'training'
-    ? '∞' : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+  hud.querySelector('.clock')!.textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
   for (const [index, side] of [...hud.querySelectorAll('.hud-side')].entries()) {
     const actor = snapshot.fighters[index];
     const fighter = definition.fighters[index];
@@ -534,16 +516,6 @@ function updateHud(snapshot: Snapshot) {
     objective.textContent = setup.stop === 'ocean-boss' && snapshot.fighters[1].move
       ? definition.fighters[1].moves[snapshot.fighters[1].move.slot].name
       : setup.stop === 'ocean-boss' ? 'Survive the tide' : stops.find(({ id }) => id === setup.stop)!.title;
-  }
-  if (!frameData.hidden) {
-    frameData.textContent = snapshot.fighters.map((actor, index) => {
-      const fighter = definition.fighters[index];
-      if (!actor.move) return `${fighter.name} · ${actor.stun ? `stun ${actor.stun}f` : 'neutral'}`;
-      const move = fighter.moves[actor.move.slot];
-      const frame = actor.move.frame;
-      const phase = frame < move.startup ? 'startup' : frame < move.startup + move.active ? 'active' : 'recovery';
-      return `${fighter.name} · ${move.name}, ${phase} ${frame + 1}/${move.startup + move.active + move.recovery}f`;
-    }).join('   /   ');
   }
 }
 
@@ -596,10 +568,10 @@ function render(now: number) {
     currentSnapshot = display.snapshot;
     react(currentSnapshot, display.events, now);
     updateHud(currentSnapshot);
-    renderer.draw(definition, currentSnapshot, now, false, display.positions);
+    renderer.draw(definition, currentSnapshot, now, display.positions);
     if (currentSnapshot.phase === 'finished') finish(currentSnapshot);
   } else {
-    renderer.draw(definition, currentSnapshot, now, debug, undefined, setup.stop === 'proposal-rock-cleanup' && !!offline);
+    renderer.draw(definition, currentSnapshot, now, undefined, setup.stop === 'proposal-rock-cleanup' && !!offline);
   }
   renderFrame = requestAnimationFrame(render);
 }
@@ -754,13 +726,6 @@ againButton.addEventListener('click', () => {
     startLocal({ ...setup, seed: randomSeed() }, offline.mode);
   }
 });
-function setDebug(visible: boolean) {
-  debug = visible;
-  debugToggle.setAttribute('aria-pressed', String(debug));
-  debugToggle.textContent = debug ? 'Hide hitboxes' : 'Show hitboxes';
-}
-
-debugToggle.addEventListener('click', () => setDebug(!debug));
 sound.addEventListener('change', () => {
   if (!sound.checked) return;
   audio ??= new AudioContext();
