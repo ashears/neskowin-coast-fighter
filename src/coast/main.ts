@@ -3,10 +3,9 @@ import { createMatch, SNAPSHOT_VERSION, TICK_RATE } from '@ashears/2d-fighter-fr
 import type { GameEvent, MatchDefinition, ReadonlyDeep, Seat, Snapshot } from '@ashears/2d-fighter-framework';
 import { fighterIds, coastConfig, fighterInfo, roster, ruleIds, stageIds, stageInfo, supportsMatch } from './content';
 import type { FighterId, RuleId, StageId } from './content';
-import { ROOM_CODE } from '@ashears/fighter-relay/protocol';
+import { DirectRoomConnection, supportsDirectRooms } from '@ashears/fighter-direct';
 import type { RoomView, ServerMessage } from '@ashears/fighter-relay/protocol';
 import { Controls } from './input';
-import { RoomConnection } from './online';
 import { OfflineFight, OnlineFight, randomSeed, readReplay, storeReplay } from './session';
 import type { LocalMode, Mode, SavedFight, Setup } from './session';
 import { ArenaRenderer } from './stage';
@@ -26,12 +25,17 @@ function byId<ElementType extends HTMLElement = HTMLElement>(id: string): Elemen
 const setupView = byId('setup-view');
 const activeView = byId('active-view');
 const roomView = byId('room-view');
+const pairingView = byId('pairing-view');
+const pairingCode = byId<HTMLTextAreaElement>('pairing-code');
+const replyInput = byId<HTMLTextAreaElement>('reply-input');
+const acceptReply = byId<HTMLButtonElement>('accept-reply');
+let pairingAttempt = 0;
 const resultView = byId('result-view');
 const resultHeading = byId('result-heading');
 const modeScreen = byId('mode-screen');
 const gameScreen = byId('game-screen');
 const modeButtons = [...modeScreen.querySelectorAll<HTMLButtonElement>('button[data-mode]')];
-const roomsAvailable = location.protocol !== 'https:' || Boolean(import.meta.env.VITE_ROOM_URL);
+const roomsAvailable = supportsDirectRooms();
 const modeNames: Record<Mode, string> = {
   campaign: 'Campaign', cpu: 'Fight CPU', local: 'Local versus', training: 'Training', online: 'Online',
 };
@@ -93,7 +97,10 @@ function buildRoster() {
 
 let renderer: ArenaRenderer;
 let renderFrame = 0;
-const connection = new RoomConnection(onServerMessage, onDisconnect);
+const connection = new DirectRoomConnection({
+  id: 'neskowin', fighters: fighterIds, stages: stageIds, rules: ruleIds,
+  config: coastConfig, supports: supportsMatch,
+}, onServerMessage, onDisconnect);
 const controls = new Controls(touch, () => {
   const neutral = online?.input(0);
   if (neutral) connection.send(neutral);
@@ -167,10 +174,11 @@ function choosePalette(id: PaletteId | null) {
   drawShop(id ?? 'original');
 }
 
-function showView(view: 'setup' | 'active' | 'room' | 'result') {
+function showView(view: 'setup' | 'active' | 'pairing' | 'room' | 'result') {
   setupView.hidden = view !== 'setup';
   activeView.hidden = view !== 'active';
   roomView.hidden = view !== 'room';
+  pairingView.hidden = view !== 'pairing';
   resultView.hidden = view !== 'result';
 }
 
@@ -190,14 +198,14 @@ function updateMode() {
   startButton.hidden = mode === 'online' && !roomsAvailable;
   byId('opponent-label').textContent = mode === 'local' ? 'Player two' : mode === 'training' ? 'Training dummy' : 'CPU fighter';
   startButton.replaceChildren(document.createTextNode(
-    mode === 'online' ? 'Create private room' : mode === 'training' ? 'Start training' : mode === 'campaign' ? 'Play stop' : 'Start fight',
+    mode === 'online' ? 'Create invite' : mode === 'training' ? 'Start training' : mode === 'campaign' ? 'Play stop' : 'Start fight',
   ));
   const hints: Record<Mode, string> = {
     cpu: '',
     local: 'Two fighters, one keyboard.',
     training: 'Practice against a stationary dummy and inspect move frames.',
     campaign: stops.find(({ id }) => id === selectedStop)!.objective,
-    online: roomsAvailable ? 'Share a room code to play with a friend.' : 'Online rooms are unavailable on this site.',
+    online: roomsAvailable ? 'Play directly with a friend. Use the same Wi-Fi for the best chance of connecting.' : 'This browser does not support direct rooms.',
   };
   byId('setup-hint').textContent = hints[mode];
   replayButton.disabled = !lastReplay;
@@ -405,10 +413,9 @@ function validRoom(candidate: RoomView): candidate is RoomView & { stage: StageI
 
 function updateRoom() {
   if (!room) return;
-  byId('code-display').textContent = room.code;
   byId('room-description').textContent = room.status === 'playing'
     ? `${stageInfo[room.stage as StageId].name} · You are player ${seat + 1}.`
-    : `Share the code to invite a friend. You are player ${seat + 1}.`;
+    : `Connected directly. You are player ${seat + 1}.`;
   const players = byId('room-players');
   players.replaceChildren(...room.players.map((player, index) => {
     const item = document.createElement('li');
@@ -441,7 +448,11 @@ function onServerMessage(message: ServerMessage) {
         showView('room');
         updateRoom();
         setStatus('');
-        if (firstView) roomFighter.focus({ preventScroll: true });
+        if (firstView) {
+          pairingCode.value = '';
+          replyInput.value = '';
+          roomFighter.focus({ preventScroll: true });
+        }
       } else if (room.status === 'finished' && room.players[seat]?.rematch) {
         againButton.disabled = true;
         setStatus('Waiting for the other player to rematch.');
@@ -459,7 +470,7 @@ function onServerMessage(message: ServerMessage) {
       if (message.snapshot.version !== SNAPSHOT_VERSION
         || createMatch(config.definition, config.rules).snapshot().configuration !== message.snapshot.configuration) {
         connection.close();
-        onDisconnect('The room server and this demo use different fighter data.');
+        onDisconnect('The players loaded different game versions. Reload both pages.');
         return;
       }
       online = new OnlineFight(selection, message.match, message.snapshot);
@@ -475,7 +486,7 @@ function onServerMessage(message: ServerMessage) {
       connection.close();
       onDisconnect(message.reason === 'opponent-left' ? 'Your opponent left the room.'
         : message.reason === 'expired' ? 'The private room expired.'
-        : message.reason === 'server-error' ? 'The server could not continue this room.'
+        : message.reason === 'server-error' ? 'The browsers could not continue this room.'
         : 'You left the room.');
       break;
     case 'error':
@@ -620,6 +631,7 @@ function selectMode(selected: Mode) {
 }
 
 function returnToModes() {
+  pairingAttempt++;
   cancelAnimationFrame(renderFrame);
   if (room) connection.send({ type: 'leave' });
   connection.close();
@@ -650,23 +662,63 @@ stageField.addEventListener('change', () => {
   drawPreview();
 });
 
+async function startPairing(kind: 'invite' | 'reply', createCode: () => Promise<string>) {
+  const attempt = ++pairingAttempt;
+  showView('pairing');
+  byId('pairing-heading').focus({ preventScroll: true });
+  byId('pairing-hint').textContent = '';
+  byId('pairing-share').hidden = true;
+  byId('reply-form').hidden = true;
+  pairingCode.value = '';
+  replyInput.value = '';
+  acceptReply.disabled = false;
+  setStatus('Preparing a direct connection…');
+  try {
+    const code = await createCode();
+    if (attempt !== pairingAttempt || pairingView.hidden) return;
+    pairingCode.value = code;
+    byId('pairing-code-label').textContent = kind === 'invite' ? 'Invite code' : 'Reply code';
+    byId('pairing-hint').textContent = kind === 'invite'
+      ? 'Send this invite to your friend. Paste the reply they send back.'
+      : 'Send this reply back to your friend. Keep this page open while they connect.';
+    byId('pairing-share').hidden = false;
+    byId('reply-form').hidden = kind !== 'invite';
+    setStatus('');
+  } catch (error) {
+    if (attempt !== pairingAttempt || pairingView.hidden) return;
+    backToSetup();
+    setStatus(error instanceof Error ? error.message : 'Could not prepare a direct connection.');
+  }
+}
+
 byId('setup-form').addEventListener('submit', (event) => {
   event.preventDefault();
   const selection = readSetup();
   if (mode === 'online') {
-    setStatus('Connecting to the private room server…');
-    connection.connect({ type: 'create', stage: selection.stage, rule: selection.rule });
+    void startPairing('invite', () => connection.invite(selection.stage, selection.rule));
   } else startLocal(selection, mode);
 });
 byId('join-form').addEventListener('submit', (event) => {
   event.preventDefault();
-  const code = byId<HTMLInputElement>('room-code').value.trim().toUpperCase();
-  if (!ROOM_CODE.test(code)) {
-    setStatus('Enter the eight-character room code.');
-    return;
+  const invite = byId<HTMLTextAreaElement>('invite-input').value;
+  void startPairing('reply', () => connection.reply(invite));
+});
+byId('reply-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  acceptReply.disabled = true;
+  try {
+    await connection.accept(replyInput.value);
+    if (!pairingView.hidden) setStatus('Connecting to your friend…');
+  } catch (error) {
+    if (pairingView.hidden) return;
+    acceptReply.disabled = false;
+    setStatus(error instanceof Error ? error.message : 'Could not accept the reply.');
   }
-  setStatus('Joining the private room…');
-  connection.connect({ type: 'join', code });
+});
+byId('cancel-pairing').addEventListener('click', () => {
+  pairingAttempt++;
+  connection.close();
+  stopFight();
 });
 roomFighter.addEventListener('change', () => {
   if (roomFighter.value) connection.send({ type: 'select', fighter: roomFighter.value });
@@ -674,12 +726,12 @@ roomFighter.addEventListener('change', () => {
 readyButton.addEventListener('click', () => connection.send({ type: 'ready', ready: !room?.players[seat]?.ready }));
 for (const button of document.querySelectorAll('[data-leave-room]')) button.addEventListener('click', stopFight);
 byId('copy-code').addEventListener('click', async () => {
-  if (!room) return;
   try {
-    await navigator.clipboard.writeText(room.code);
-    setStatus('Room code copied.');
+    await navigator.clipboard.writeText(pairingCode.value);
+    setStatus('Code copied.');
   } catch {
-    setStatus(`Share this code with your friend: ${room.code}.`);
+    pairingCode.select();
+    setStatus('Copy the selected code and send it to your friend.');
   }
 });
 byId('stop').addEventListener('click', stopFight);
@@ -687,9 +739,10 @@ byId('result-back').addEventListener('click', stopFight);
 replayButton.addEventListener('click', () => { if (lastReplay) startLocal(lastReplay.setup, 'replay', lastReplay); });
 againButton.addEventListener('click', () => {
   if (privateResult && online) {
-    connection.send({ type: 'rematch', match: online.number });
+    const match = online.number;
     againButton.disabled = true;
     setStatus('Waiting for the other player to rematch.');
+    connection.send({ type: 'rematch', match });
   } else if (offline?.mode === 'campaign') {
     selectedStop = nextCampaignStop ?? setup.stop!;
     const next = readSetup();

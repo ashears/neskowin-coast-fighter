@@ -41,8 +41,6 @@ jobs:
 
       - name: Build
         run: npm run build
-        env:
-          VITE_ROOM_URL: ${{ vars.NESKOWIN_ROOM_URL }}
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

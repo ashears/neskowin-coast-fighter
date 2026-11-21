@@ -95,8 +95,8 @@
             <p class="hint" id="setup-hint"></p>
           </form>
           <form id="join-form" class="join-form" hidden>
-            <label>Room code<input id="room-code" name="room" placeholder="ABCD2345" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false" required></label>
-            <button class="secondary" type="submit">Join room</button>
+            <label>Invite code<textarea id="invite-input" rows="2" maxlength="24000" autocomplete="off" spellcheck="false" required></textarea></label>
+            <button class="secondary" type="submit">Generate reply</button>
           </form>
           <button class="quiet replay-link" id="replay" type="button" disabled>Replay last match</button>
         </div>
@@ -105,9 +105,21 @@
           <p class="hint" id="active-matchup"></p>
           <dl id="move-guide" class="move-guide"></dl>
         </section>
+        <section id="pairing-view" hidden aria-labelledby="pairing-heading">
+          <h2 id="pairing-heading" tabindex="-1">Connect to a friend</h2>
+          <p id="pairing-hint" class="hint"></p>
+          <div id="pairing-share" hidden>
+            <label><span id="pairing-code-label">Invite code</span><textarea id="pairing-code" rows="3" readonly spellcheck="false"></textarea></label>
+            <button id="copy-code" class="quiet" type="button">Copy code</button>
+          </div>
+          <form id="reply-form" class="join-form" hidden>
+            <label>Reply code<textarea id="reply-input" rows="2" maxlength="24000" autocomplete="off" spellcheck="false" required></textarea></label>
+            <button class="secondary" id="accept-reply" type="submit">Connect</button>
+          </form>
+          <button id="cancel-pairing" class="quiet exit-room" type="button">Cancel</button>
+        </section>
         <section id="room-view" hidden aria-labelledby="room-heading">
           <h2 id="room-heading">Private room</h2>
-          <div class="room-code"><output id="code-display"></output><button id="copy-code" class="quiet" type="button">Copy code</button></div>
           <p id="room-description" class="hint"></p>
           <ol id="room-players" class="room-players"></ol>
           <label>Your fighter<select id="room-fighter"><option value="">Select a fighter</option></select></label>

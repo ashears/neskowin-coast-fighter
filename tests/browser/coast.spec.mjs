@@ -96,7 +96,7 @@ test('mobile practice accepts touch input and fits without overflow', async ({ b
   }
 });
 
-test('private rooms play a full match with the Neskowin roster and support rematch', async ({ browser }) => {
+test('direct rooms play a full match with the Neskowin roster and support rematch', async ({ browser }) => {
   const left = await browser.newContext();
   const right = await browser.newContext();
   try {
@@ -105,10 +105,22 @@ test('private rooms play a full match with the Neskowin roster and support remat
     const errors = await Promise.all([open(host), open(guest)]);
     for (const page of [host, guest]) await page.getByRole('button', { name: 'Online', exact: true }).click();
     await host.getByRole('combobox', { name: 'Rules' }).selectOption('stock');
-    await host.getByRole('button', { name: 'Create private room' }).click();
-    await expect(host.locator('#code-display')).toHaveText(/^[A-Z2-9]{8}$/);
-    await guest.getByLabel('Room code').fill(await host.locator('#code-display').textContent());
-    await guest.getByRole('button', { name: 'Join room' }).click();
+    const externalSockets = [];
+    for (const page of [host, guest]) page.on('websocket', ({ url }) => externalSockets.push(url));
+    await host.getByRole('button', { name: 'Create invite' }).click();
+    await expect(host.locator('#pairing-code')).toHaveValue(/^FIGHT1\./);
+    const invite = await host.locator('#pairing-code').inputValue();
+    await guest.locator('#invite-input').fill(invite);
+    await guest.getByRole('button', { name: 'Generate reply' }).click();
+    await expect(guest.locator('#pairing-code')).toHaveValue(/^FIGHT1\./);
+    const reply = await guest.locator('#pairing-code').inputValue();
+    await host.locator('#reply-input').fill(invite);
+    await host.getByRole('button', { name: 'Connect', exact: true }).click();
+    await expect(host.getByRole('status')).toContainText('full reply code');
+    await host.locator('#reply-input').fill(reply);
+    await host.getByRole('button', { name: 'Connect', exact: true }).click();
+    for (const page of [host, guest]) await expect(page.getByRole('heading', { name: 'Private room' })).toBeVisible();
+    expect(externalSockets).toEqual([]);
     await Promise.all([
       host.getByRole('combobox', { name: 'Your fighter' }).selectOption('the-house'),
       guest.getByRole('combobox', { name: 'Your fighter' }).selectOption('duck-flag'),
@@ -124,6 +136,7 @@ test('private rooms play a full match with the Neskowin roster and support remat
     await expect(guest.locator('#session-label')).toHaveText('Online · P2');
     await guest.getByRole('button', { name: 'Leave room' }).click();
     await expect(host.getByRole('status')).toHaveText('Your opponent left the room.');
+    expect(externalSockets).toEqual([]);
     expect(errors).toEqual([[], []]);
   } finally {
     await Promise.all([left.close(), right.close()]);
